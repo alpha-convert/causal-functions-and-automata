@@ -124,6 +124,3 @@ Definition headApply (alpha : omega_presheaf_nt lengthN_pshf lengthN_pshf) : A -
 
 CoFixpoint fromNT (alpha : omega_presheaf_nt lengthN_pshf lengthN_pshf) : autom :=
   Step (fun a => (headApply alpha a, fromNT (unshiftlengthNNT (shiftNT alpha)))).
-
-Fixpoint stepN (m : autom) (n : nat) (l : lengthN n) : lengthN n :=
-    match n
