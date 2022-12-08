@@ -130,15 +130,23 @@ Fixpoint stepN {n} (m : autom) (l : lengthN n) : autom * lengthN n :=
     match l with
     | Empty_lengthN => (m,Empty_lengthN)
     | Snoc_lengthN l' x => let (m',l'') := stepN m l' in
-                              let (y,m'') := step m x in
+                              let (y,m'') := step m' x in
                               (m'',Snoc_lengthN l'' y)
     end.
 
 Definition execN {n} (m : autom) (l : lengthN n) := snd (stepN m l).
 
-Theorem exec_S : forall n m (l : lengthN n) x, exists l' y, (execN m (Snoc_lengthN l x) = Snoc_lengthN l' y) /\ (l' = execN m l).
+Theorem exec_S : forall n m (l : lengthN n) x, exists y, (execN m (Snoc_lengthN l x) = Snoc_lengthN (execN m l) y).
 Proof.
-Admitted.
+  intros.
+  exists (let (m',_) := stepN m l in fst (step m' x)).
+  unfold execN.
+  cbn.
+  destruct (stepN m l) as [m' l'].
+  destruct (step m' x) as [y m''].
+  cbn.
+  reflexivity.
+Qed.
 
 Theorem toNT_squares (m : autom) :
   forall n : nat,
@@ -153,10 +161,9 @@ induction n.
   destruct H.
   rewrite -> H.
   cbn.
-  assert (exists l' y, (execN m (Snoc_lengthN (truncate l) x) = Snoc_lengthN l' y) /\ (l' = execN m (truncate l))) by (apply exec_S).
-  destruct H0 as [l' [y [HSnoc Hl']]].
+  assert (exists y, (execN m (Snoc_lengthN (truncate l) x) = Snoc_lengthN (execN m (truncate l)) y)) by (apply exec_S).
+  destruct H0 as [y HSnoc].
   rewrite -> HSnoc.
-  rewrite -> Hl'.
   cbn.
   reflexivity.
 Qed.
