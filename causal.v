@@ -90,15 +90,23 @@ Definition truncate {n : nat} (l : vec (S n)) : vec n :=
   | Snoc l _ => l
   end.
 
+(*| We will also need the two "standard" list functions `tail` and `cons`, so we introduce them here. |*)
+Fixpoint tail {n : nat} (l : vec (S n)) : vec n.
+Admitted.
+
+Fixpoint cons {n : nat} (x : A) (l : vec n) : vec (S n).
+Admitted.
+
 (*|
 Truncation is particularly interesting because it lets us reframe streams in terms of their prefixes.
 A stream can be thought of as a family of vectors `vs : forall n, vec n`, one of each length,
-such that the :math:`n+1`st is just the :math:`n`th with one element tacked on to the end.
+such that the :math:`n+1` st is just the :math:`n` th with one element tacked on to the end.
 Swapping the perspective around, this is to say that that `vs n = truncate (vs (n + 1))`.
 Intuitively, this view of streams is consistent with their view as coinductively defined objects:
-they are lists that we may unfold them to any finite depth.
+they are lists that we may unfold to any finite depth.
 
-Viewing streams this way leads us to our first definition of productive & truthful functions on streams.
+Viewing streams this way leads us to our first definition of productive & truthful functions on streams,
+shown below.
 |*)
 
 
@@ -109,17 +117,25 @@ Record causal : Type := mkCausal {
 
 (*|
 
+For historical reasons, these objects are called "causal functions".
+A causal function is
+
+ #. A family of maps `f n` taking vectors of length `n` to vectors of length `n`. The typing
+    ensures the ``one-at-a-time`` productivity of this family, viewed as a stream function:
+    vectors of length 1 yield vectors of length 1, and adding one more element to the input yields
+    exactly one more element of output. But nothing in the type ensures that the first elmement
+    remained the same. That's the job of the second component of the record, which consists of...
+
+ #. Proofs that the family `f` "commutes with truncation", as shown in the commutative diagram below.
+
+ .. image:: square.png
+
 |*)
 
 Definition causalApply1 (c : causal) (x : A) : A.
 Admitted.
 
-(* remove the first element *)
-Fixpoint tail {n : nat} (l : vec (S n)) : vec n.
-Admitted.
 
-Fixpoint cons {n : nat} (x : A) (l : vec n) : vec (S n).
-Admitted.
 
 Theorem cons_snoc : forall n (l : vec n) x y, cons x (Snoc l y) = Snoc (cons x l) y.  
 Proof. 
