@@ -63,11 +63,12 @@ are computable. Unfortunately, we must work a bit harder to get the other proper
 Intuitively, both the truthfulness and productivity properties are facts about *prefixes* of streams.
 Truthfulness says that passing a larger prefix yields only a larger output, while productivity says
 precisely by how much the output should grow. Of course, while this makes intuitive sense, it's not
-immediately clear how to define these properties formally. After all, stream functions `f : stream -> streamm`
+immediately clear how to define these properties formally. After all, stream functions `f : stream -> stream`
 are defined on *entire* streams, not prefixes!
 
 The insight required to guide us past this quandry is that truthful, productive functions on prefixes of streams
-should naturally "lift" to functions on whole streams.
+should actually be defined *in terms of* functions on their prefixes. To investigate this idea further, let's
+introduce a type of prefixes.
 
 |*)
 
@@ -90,11 +91,44 @@ Definition truncate {n : nat} (l : vec (S n)) : vec n :=
   | Snoc l _ => l
   end.
 
-(*| We will also need the two "standard" list functions `tail` and `cons`, so we introduce them here. |*)
-Fixpoint tail {n : nat} (l : vec (S n)) : vec n.
+(*| We will also need the two "standard" list functions `tail` and `cons`, as well as some theorems relating them to `Snoc` and `truncate`.
+Rather than take time to explain these later, we will simply introduce them here. |*)
+
+Fixpoint cons {n : nat} (x : A) (l : vec n) : vec (S n) :=
+  match l in vec n return vec (S n) with
+  | Empty => Snoc Empty x
+  | Snoc l' y => Snoc (cons x l') y
+  end.
+
+Definition tail {n : nat} (l : vec (S n)) : vec n.
+induction n.
+- exact Empty.
+- inversion l. apply (fun u => Snoc u X0). apply IHn. exact X.
+Defined.
+
+Theorem cons_snoc : forall n (l : vec n) x y, cons x (Snoc l y) = Snoc (cons x l) y.  
+Proof. 
+intros n l.
+dependent destruction l.
+- cbn. reflexivity.
+- intros. cbn. reflexivity.
+Qed.
+
+Theorem truncate_cons : forall n (l : vec (S n)) x, truncate (cons x l) = cons x (truncate l).
+Proof.
+  intros n l.
+  dependent induction l.
+  - intros. rewrite cons_snoc. cbn. reflexivity.
+Qed.
+
+Theorem tail_snoc : forall (n : nat) (l : vec (S n)) x, tail (Snoc l x) = Snoc (tail l) x.
 Admitted.
 
-Fixpoint cons {n : nat} (x : A) (l : vec n) : vec (S n).
+Theorem truncate_tail : forall n (l : vec (S (S n))) , truncate (tail l) = tail (truncate l).
+intros n l.
+dependent induction l.
+dependent destruction l.
+cbn.
 Admitted.
 
 (*|
@@ -105,8 +139,10 @@ Swapping the perspective around, this is to say that that `vs n = truncate (vs (
 Intuitively, this view of streams is consistent with their view as coinductively defined objects:
 they are lists that we may unfold to any finite depth.
 
-Viewing streams this way leads us to our first definition of productive & truthful functions on streams,
-shown below.
+Causal Functions
+================
+
+Viewing streams this way leads us to our first definition of productive & truthful functions on streams!
 |*)
 
 
@@ -117,41 +153,35 @@ Record causal : Type := mkCausal {
 
 (*|
 
-For historical reasons, these objects are called "causal functions".
-A causal function is
+For historical reasons, these objects are called "causal functions", which consist of
 
- #. A family of maps `f n` taking vectors of length `n` to vectors of length `n`. The typing
-    ensures the ``one-at-a-time`` productivity of this family, viewed as a stream function:
-    vectors of length 1 yield vectors of length 1, and adding one more element to the input yields
+ 1. A family of maps `f n : vec n -> vec n` taking vectors of length `n` to vectors of length `n`. The typing
+    ensures the ``one-at-a-time`` productivity of this family, viewed as a stream function.
+    Vectors of length 1 yield vectors of length 1, and adding one more element to the input yields
     exactly one more element of output. But nothing in the type ensures that the first elmement
     remained the same. That's the job of the second component of the record, which consists of...
 
- #. Proofs that the family `f` "commutes with truncation", as shown in the commutative diagram below.
+ 2. Proofs that the family `f` "commutes with truncation", as shown in the commutative diagram below.
+    Intuitively, `f n (truncate l) = truncate (f (S n) l)` says that `f n` and `f (S n)` must agree on the
+    first `n` elements of their input.
 
- .. image:: square.png
 
 |*)
+
+(*|
+.. image:: square.png
+|*)
+
+(*|
+
+|*)
+
 
 Definition causalApply1 (c : causal) (x : A) : A.
 Admitted.
 
 
 
-Theorem cons_snoc : forall n (l : vec n) x y, cons x (Snoc l y) = Snoc (cons x l) y.  
-Proof. 
-intros n l.
-dependent induction l.
-Admitted.
-
-Theorem truncate_cons : forall n (l : vec (S n)) x, truncate (cons x l) = cons x (truncate l).
-Proof.
-  intros n l.
-  dependent induction l.
-  - intros. rewrite cons_snoc. cbn. reflexivity.
-Qed.
-
-Theorem truncate_tail : forall n (l : vec (S (S n))) , truncate (tail l) = tail (truncate l).
-Admitted.
 
 Definition consMap (x : A) (f : forall n, vec n -> vec n) : forall n, vec n -> vec n :=
   fun n => fun xs => tail (f (S n) (cons x xs)).
@@ -163,7 +193,7 @@ Proof.
   intros.
   destruct c as [f pf].
   unfold consMap.
-  cbn.
+  unfold causal.f.
   rewrite <- truncate_cons.
   rewrite pf.
   rewrite truncate_tail.
@@ -186,8 +216,12 @@ CoFixpoint interpCausal (c : causal) (s : stream) : stream :=
   end.
 
 
+(*|
 
-(*|There's also automata!|*)
+Transducers
+===========
+
+|*)
 
 CoInductive transd : Type := 
 | Step : (A -> A * transd) -> transd.
