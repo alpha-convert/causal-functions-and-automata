@@ -84,7 +84,6 @@ Record causal : Type := mkCausal {
 
 Definition causalApply1 (c : causal) (x : A) : A.
 Admitted.
-.
 
 (* remove the first element *)
 Fixpoint tail {n : nat} (l : vec (S n)) : vec n.
@@ -160,6 +159,8 @@ CoFixpoint interpTransd (t : transd) (s : stream) : stream :=
                   SCons y (interpTransd t' s')
   end.
 
+(*| and as vector maps |*)
+
 Fixpoint stepN {n} (t : transd) (l : vec n) : transd * vec n :=
     match l with
     | Empty => (t,Empty)
@@ -168,18 +169,66 @@ Fixpoint stepN {n} (t : transd) (l : vec n) : transd * vec n :=
                               (t'',Snoc l'' y)
     end.
 
-(*| and as vector maps |*)
+Definition execN (t : transd) : forall n, vec n -> vec n := fun n l => snd (stepN t l).
 
-Definition execN {n} (t : transd) : vec n -> vec n := fun l => snd (stepN t l).
+(*| and these vector maps are causal! We can take an automata, and turn its execN into a causal map|*)
 
-(*| and these vector maps are causal! |*)
+Theorem execN_snoc : forall t n l x, execN t (S n) (Snoc l x) = Snoc (execN t n l) (let (t',_) := stepN t l in fst (step t' x)).
+Proof.
+  intros.
+  unfold execN.
+  cbn.
+  destruct (stepN t l).
+  destruct (step t0 x).
+  cbn.
+  reflexivity.
+Qed.
 
-Definition causalFromTransd (t : transd) : causal.
-Admitted.
 
-CoFixpoint transdFromCausal (c : causal) : transd.
-Admitted.
+Theorem execN_caused (t : transd) :
+forall (n : nat) (l : vec (S n)),
+  execN t n (truncate l) = truncate (execN t (S n) l).
+Proof.
+  intros.
+  dependent induction l.
+  cbn.
+  rewrite execN_snoc.
+  cbn.
+  reflexivity.
+Qed.
 
+Definition transdToCausal (t : transd) : causal := mkCausal (execN t) (execN_caused t).
+
+(*| We can also go backwards! Causal maps define automata. |*)
+
+CoFixpoint causalToTransd (c : causal) : transd :=
+  Step (fun x => let y := causalApply1 c x in (y, causalToTransd (consCausal x c))).
+
+(*|This begs the roundtrip questions.|*)
+
+Theorem vec_eta_0 : forall (l : vec 0), l = Empty.
+Proof.
+  intros.
+  dependent destruction l.
+  reflexivity.
+Qed.
+
+Theorem vec_eta_S : forall n, forall (l : vec (S n)), exists x , l = Snoc (truncate l) x.
+Proof.
+  intros.
+  dependent destruction l.
+  exists a.
+  auto.
+Qed.
+
+Theorem causalAndBack : forall c n l, f (transdToCausal (causalToTransd c)) n l = f c n l.
+Proof.
+  intros.
+  dependent induction l.
+  - cbn. unfold execN. rewrite vec_eta_0. reflexivity.
+  - cbn. rewrite execN_snoc.
+    unfold execN.
+Qed.
 
 
 
@@ -197,13 +246,7 @@ Theorem trunc_0 : forall (l : vec 1), truncate l = Empty.
 Proof.
 Admitted.
 
-Theorem vec_eta_0 : forall (l : vec 0), l = Empty.
-Proof.
-Admitted.
 
-Theorem vec_eta_S : forall n, forall (l : vec (S n)), exists x , l = Snoc (truncate l) x.
-Proof.
-Admitted.
 
 Definition vec_pshf : omega_presheaf := mkPresheaf vec (fun _ => truncate).
 
