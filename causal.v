@@ -41,7 +41,7 @@ in such a "stream transformer" machine model, the machine would need the ability
 (b) emit a dummy value for the first output and then "retract" it once it got the second bit of input.
 
 Our goal in this document is to characterize the stream functions :math:`f : 2^\omega \to 2^\omega` which
-can be implemented as stream processing machines which are both (a) *productive*, in the sense that they always
+can be implemented as stream processing machines which are both (a) "productive", in the sense that they always
 emit an output for each input, and (b) are "truthful" in the sense that they never have to go back on their word.
 
 |*)
@@ -56,10 +56,19 @@ CoInductive stream : Type :=
 | SCons : A -> stream -> stream.
 
 (*|
-Want to think about functions stream -> stream.
-Intuitively want monotonicity property:...
-But this doesn't typecheck. I guess we want families
-of maps for each prefix length.
+
+More or less by definition, the functions `stream -> stream` which can be written in Coq
+are computable. Unfortunately, we must work a bit harder to get the other properties.
+
+Intuitively, both the truthfulness and productivity properties are facts about *prefixes* of streams.
+Truthfulness says that passing a larger prefix yields only a larger output, while productivity says
+precisely by how much the output should grow. Of course, while this makes intuitive sense, it's not
+immediately clear how to define these properties formally. After all, stream functions `f : stream -> streamm`
+are defined on *entire* streams, not prefixes!
+
+The insight required to guide us past this quandry is that truthful, productive functions on prefixes of streams
+should naturally "lift" to functions on whole streams.
+
 |*)
 
 Inductive vec : nat -> Type :=
@@ -67,20 +76,40 @@ Inductive vec : nat -> Type :=
 | Snoc {n} : vec n -> A -> vec (S n).
 
 (*|
-But which families of maps are allowable? not all familes of vec-maps
-give things that interp into streams.. we're back to the beginning.
+Above is a definition of length-indexed vectors, represented as snoc-lists.
+These will represent prefixes of streams.
 
-Answer is Causal maps! they precisely can't go back on their word.|*)
+
+The most important (for our purposes) operation on vectors is truncation: deleting the
+last element. Because we've implemented vectors as length-indexed snoc lists,
+truncate is trivial to implment, as shown below.
+|*)
 
 Definition truncate {n : nat} (l : vec (S n)) : vec n := 
   match l in vec (S n) return vec n with
   | Snoc l _ => l
   end.
 
+(*|
+Truncation is particularly interesting because it lets us reframe streams in terms of their prefixes.
+A stream can be thought of as a family of vectors `vs : forall n, vec n`, one of each length,
+such that the :math:`n+1`st is just the :math:`n`th with one element tacked on to the end.
+Swapping the perspective around, this is to say that that `vs n = truncate (vs (n + 1))`.
+Intuitively, this view of streams is consistent with their view as coinductively defined objects:
+they are lists that we may unfold them to any finite depth.
+
+Viewing streams this way leads us to our first definition of productive & truthful functions on streams.
+|*)
+
+
 Record causal : Type := mkCausal {
   f : forall n, vec n -> vec n;
   caused : forall n l, f n (truncate l) = truncate (f (S n) l)
 }.
+
+(*|
+
+|*)
 
 Definition causalApply1 (c : causal) (x : A) : A.
 Admitted.
@@ -92,7 +121,8 @@ Admitted.
 Fixpoint cons {n : nat} (x : A) (l : vec n) : vec (S n).
 Admitted.
 
-Theorem cons_snoc : forall n (l : vec n) x y, cons x (Snoc l y) = Snoc (cons x l) y.
+Theorem cons_snoc : forall n (l : vec n) x y, cons x (Snoc l y) = Snoc (cons x l) y.  
+Proof. 
 intros n l.
 dependent induction l.
 Admitted.
