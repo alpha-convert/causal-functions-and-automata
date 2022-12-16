@@ -1,5 +1,6 @@
 Require Import Coq.Lists.List.
 Require Import Coq.Program.Basics.
+Require Import Coq.Program.Equality.
 Require Import Coq.Logic.FunctionalExtensionality.
 
 (*|
@@ -39,86 +40,181 @@ the implementation must wait until the *second* bit arrives to emit the first bi
 in such a "stream transformer" machine model, the machine would need the ability to either (a) block until the second bit arrives, or
 (b) emit a dummy value for the first output and then "retract" it once it got the second bit of input.
 
-Our goal in this **???* is to characterize the stream functions :math:`f : 2^\omega \to 2^\omega` which
-can be implemented as stream processing machines which are both (a) productive, in the sense that they always
-emit an output for each input, and (b) are *causal* in the sense that they
+Our goal in this document is to characterize the stream functions :math:`f : 2^\omega \to 2^\omega` which
+can be implemented as stream processing machines which are both (a) *productive*, in the sense that they always
+emit an output for each input, and (b) are "truthful" in the sense that they never have to go back on their word.
 
+|*)
 
+(*|
+To begin, let's define a coinductive [#]_. type of streams, with elements drawn from a type `A`.
 |*)
 
 Variable A : Type.
 
-Coinductive stream : Type :=
+CoInductive stream : Type :=
 | SCons : A -> stream -> stream.
 
 (*|
-
-==========
-Transducer
-==========
-
+Want to think about functions stream -> stream.
+Intuitively want monotonicity property:...
+But this doesn't typecheck. I guess we want families
+of maps for each prefix length.
 |*)
 
+Inductive vec : nat -> Type :=
+| Empty : vec 0
+| Snoc {n} : vec n -> A -> vec (S n).
+
+(*|
+But which families of maps are allowable? not all familes of vec-maps
+give things that interp into streams.. we're back to the beginning.
+
+Answer is Causal maps! they precisely can't go back on their word.|*)
+
+Definition truncate {n : nat} (l : vec (S n)) : vec n := 
+  match l in vec (S n) return vec n with
+  | Snoc l _ => l
+  end.
+
+Record causal : Type := mkCausal {
+  f : forall n, vec n -> vec n;
+  caused : forall n l, f n (truncate l) = truncate (f (S n) l)
+}.
+
+Definition causalApply1 (c : causal) (x : A) : A.
+Admitted.
+.
+
+(* remove the first element *)
+Fixpoint tail {n : nat} (l : vec (S n)) : vec n.
+Admitted.
+
+Fixpoint cons {n : nat} (x : A) (l : vec n) : vec (S n).
+Admitted.
+
+Theorem cons_snoc : forall n (l : vec n) x y, cons x (Snoc l y) = Snoc (cons x l) y.
+intros n l.
+dependent induction l.
+Admitted.
+
+Theorem truncate_cons : forall n (l : vec (S n)) x, truncate (cons x l) = cons x (truncate l).
+Proof.
+  intros n l.
+  dependent induction l.
+  - intros. rewrite cons_snoc. cbn. reflexivity.
+Qed.
+
+Theorem truncate_tail : forall n (l : vec (S (S n))) , truncate (tail l) = tail (truncate l).
+Admitted.
+
+Definition consMap (x : A) (f : forall n, vec n -> vec n) : forall n, vec n -> vec n :=
+  fun n => fun xs => tail (f (S n) (cons x xs)).
+
+Theorem cons_caused  : forall x c n l,
+consMap x (f c) n (truncate l) =
+truncate (consMap x (f c) (S n) l).
+Proof.
+  intros.
+  destruct c as [f pf].
+  unfold consMap.
+  cbn.
+  rewrite <- truncate_cons.
+  rewrite pf.
+  rewrite truncate_tail.
+  reflexivity.
+Qed.
+
+Definition consCausal (x : A) (c : causal) : causal := mkCausal (consMap x (f c)) (cons_caused x c).
+
+(*|
+**Picture here!!**
+
+Causal maps interpret as streams.
+|*)
+
+
+CoFixpoint interpCausal (c : causal) (s : stream) : stream :=
+  match s with
+  | SCons x s' => let y := causalApply1 c x in
+                  SCons y (interpCausal (consCausal x c) s')
+  end.
+
+
+
+(*|There's also automata!|*)
 
 CoInductive transd : Type := 
 | Step : (A -> A * transd) -> transd.
 
-Definition step (m : transd) (x : A) : A * transd :=
-    match m with
+Definition step (t : transd) (x : A) : A * transd :=
+    match t with
     | Step f => f x
     end.
 
+(*|These also interpret as stream maps|*)
 
-Inductive listn : nat -> Type :=
-| Empty : listn 0
-| Snoc {n} : listn n -> A -> listn (S n).
+CoFixpoint interpTransd (t : transd) (s : stream) : stream :=
+  match s with
+  | SCons x s' => let (y,t') := step t x in
+                  SCons y (interpTransd t' s')
+  end.
 
-Fixpoint stepN {n} (m : transd) (l : listn n) : transd * listn n :=
+Fixpoint stepN {n} (t : transd) (l : vec n) : transd * vec n :=
     match l with
-    | Empty => (m,Empty)
-    | Snoc l' x => let (m',l'') := stepN m l' in
-                              let (y,m'') := step m' x in
-                              (m'',Snoc l'' y)
+    | Empty => (t,Empty)
+    | Snoc l' x => let (t',l'') := stepN t l' in
+                              let (y,t'') := step t' x in
+                              (t'',Snoc l'' y)
     end.
 
-Definition execN {n} (m : transd) (l : listn n) := snd (stepN m l).
+(*| and as vector maps |*)
 
-Definition exec (m : transd) (x : A) : A :=
-    fst (step m x).
+Definition execN {n} (t : transd) : vec n -> vec n := fun l => snd (stepN t l).
 
-Record omega_presheaf : Type := mkPresheaf {
+(*| and these vector maps are causal! |*)
+
+Definition causalFromTransd (t : transd) : causal.
+Admitted.
+
+CoFixpoint transdFromCausal (c : causal) : transd.
+Admitted.
+
+
+
+
+(*Record omega_presheaf : Type := mkPresheaf {
   fam : nat -> Type;
   restrict : forall n, fam (S n) -> fam n
 }.
+*)
 
 
-(* remove the first element *)
-Definition truncate {n : nat} (l : listn (S n)) : listn n := 
-  match l in listn (S n) return listn n with
-  | Snoc l _ => l
-  end.
 
 
-Theorem trunc_0 : forall (l : listn 1), truncate l = Empty.
+(**
+Theorem trunc_0 : forall (l : vec 1), truncate l = Empty.
 Proof.
 Admitted.
 
-Theorem listn_eta_0 : forall (l : listn 0), l = Empty.
+Theorem vec_eta_0 : forall (l : vec 0), l = Empty.
 Proof.
 Admitted.
 
-Theorem listn_eta_S : forall n, forall (l : listn (S n)), exists x , l = Snoc (truncate l) x.
+Theorem vec_eta_S : forall n, forall (l : vec (S n)), exists x , l = Snoc (truncate l) x.
 Proof.
 Admitted.
 
-Definition listn_pshf : omega_presheaf := mkPresheaf listn (fun _ => truncate).
+Definition vec_pshf : omega_presheaf := mkPresheaf vec (fun _ => truncate).
 
 Record omega_presheaf_nt (P : omega_presheaf) (Q : omega_presheaf) : Type := mkNT {
   component : forall n, fam P n -> fam Q n;
   squares : forall n, compose (component n) (restrict P n) = compose (restrict Q n) (component (S n))
 }.
+*)
 
 (* Is this the same as later???*)
+(*
 Definition shift (P : omega_presheaf) : omega_presheaf :=
   mkPresheaf (fun n => fam P (S n)) (fun n => restrict P (S n)).
 
@@ -139,22 +235,22 @@ Definition shiftNT {P Q} (alpha : omega_presheaf_nt P Q) : omega_presheaf_nt (sh
   mkNT (shift P) (shift Q) (shiftNT_component alpha) (shiftNT_squares alpha).
 
 
-Definition unshiftlistnNT_component (alpha : omega_presheaf_nt (shift listn_pshf) (shift listn_pshf)) : forall n : nat, fam listn_pshf n -> fam listn_pshf n :=
+Definition unshiftvecNT_component (alpha : omega_presheaf_nt (shift vec_pshf) (shift vec_pshf)) : forall n : nat, fam vec_pshf n -> fam vec_pshf n :=
     fun n => match n with
              | 0 => fun _ => Empty
-             | S n' => component (shift listn_pshf) (shift listn_pshf) alpha n'
+             | S n' => component (shift vec_pshf) (shift vec_pshf) alpha n'
     end.
 
-Theorem unshiftlistnNT_squares (alpha : omega_presheaf_nt (shift listn_pshf) (shift listn_pshf)) : forall n : nat,
+Theorem unshiftvecNT_squares (alpha : omega_presheaf_nt (shift vec_pshf) (shift vec_pshf)) : forall n : nat,
 compose
-  (unshiftlistnNT_component alpha n)
-  (restrict listn_pshf n) =
-compose (restrict listn_pshf n)
-  (unshiftlistnNT_component alpha (S n)).
+  (unshiftvecNT_component alpha n)
+  (restrict vec_pshf n) =
+compose (restrict vec_pshf n)
+  (unshiftvecNT_component alpha (S n)).
 Proof.
 simpl. induction n.
  - extensionality l. cbn. unfold compose. rewrite trunc_0. reflexivity.
- - simpl in *. apply (squares (shift listn_pshf) (shift listn_pshf) alpha).
+ - simpl in *. apply (squares (shift vec_pshf) (shift vec_pshf) alpha).
 Qed.
 
 (* There's a nice picture to draw here of the commutative diagrram: shiftNT pushes the indexing up by one, so
@@ -172,29 +268,29 @@ Qed.
 
    to get a full NT.
    This should probably work for any NT shift P => shift Q, by tainng a singleton set to be the zero component.
-   But this happens to be a listn_pshf anyway.
+   But this happens to be a vec_pshf anyway.
 *)
-Definition unshiftlistnNT (alpha : omega_presheaf_nt (shift listn_pshf) (shift listn_pshf)) : omega_presheaf_nt listn_pshf listn_pshf :=
-    mkNT listn_pshf listn_pshf (unshiftlistnNT_component alpha) (unshiftlistnNT_squares alpha).
+Definition unshiftvecNT (alpha : omega_presheaf_nt (shift vec_pshf) (shift vec_pshf)) : omega_presheaf_nt vec_pshf vec_pshf :=
+    mkNT vec_pshf vec_pshf (unshiftvecNT_component alpha) (unshiftvecNT_squares alpha).
 
-Definition len1Proj (x : fam listn_pshf 1) : A.
+Definition len1Proj (x : fam vec_pshf 1) : A.
 Proof.
 simpl in *. inversion x. apply X0.
 Qed.
 
-Definition headApply (alpha : omega_presheaf_nt listn_pshf listn_pshf) : A -> A :=
-  fun a => let l1 : fam listn_pshf 1 := Snoc Empty a in
-           let l2 : fam listn_pshf 1 := component _ _ alpha 1 l1 in
+Definition headApply (alpha : omega_presheaf_nt vec_pshf vec_pshf) : A -> A :=
+  fun a => let l1 : fam vec_pshf 1 := Snoc Empty a in
+           let l2 : fam vec_pshf 1 := component _ _ alpha 1 l1 in
            len1Proj l2.
 
-CoFixpoint fromNT (alpha : omega_presheaf_nt listn_pshf listn_pshf) : transd :=
-  Step (fun a => (headApply alpha a, fromNT (unshiftlistnNT (shiftNT alpha)))).
+CoFixpoint fromNT (alpha : omega_presheaf_nt vec_pshf vec_pshf) : transd :=
+  Step (fun a => (headApply alpha a, fromNT (unshiftvecNT (shiftNT alpha)))).
 
-Check listn_rec.
+Check vec_rec.
 
 
 
-Theorem exec_S {n} : forall m (l : listn n) x, exists y, (execN m (Snoc l x) = Snoc (execN m l) y /\ (y = let (m',l') := stepN m l in fst (step m' x))).
+Theorem exec_S {n} : forall m (l : vec n) x, exists y, (execN m (Snoc l x) = Snoc (execN m l) y /\ (y = let (m',l') := stepN m l in fst (step m' x))).
 Proof.
   intros.
   exists (let (m',_) := stepN m l in fst (step m' x)).
@@ -208,14 +304,14 @@ Qed.
 
 Theorem toNT_squares (m : transd) :
   forall n : nat,
-   compose (execN m) (restrict listn_pshf n) =
-   compose (restrict listn_pshf n) (execN m).
+   compose (execN m) (restrict vec_pshf n) =
+   compose (restrict vec_pshf n) (execN m).
 Proof.
 intros.
 induction n.
 - simpl. extensionality l. unfold compose. rewrite trunc_0. simpl. rewrite trunc_0. reflexivity.
 - extensionality l. simpl in *. unfold compose in *.
-  assert (exists x , l = Snoc (truncate l) x) by (apply listn_eta_S).
+  assert (exists x , l = Snoc (truncate l) x) by (apply vec_eta_S).
   destruct H.
   rewrite -> H.
   cbn.
@@ -226,8 +322,8 @@ induction n.
   reflexivity.
 Qed.
 
-Definition toNT (m : transd) : omega_presheaf_nt listn_pshf listn_pshf :=
-    mkNT listn_pshf listn_pshf (fun n => execN m) (toNT_squares m).
+Definition toNT (m : transd) : omega_presheaf_nt vec_pshf vec_pshf :=
+    mkNT vec_pshf vec_pshf (fun n => execN m) (toNT_squares m).
 
 (*
 * - Clear conception of who the audience is –– why do they care about this equivalence?
@@ -244,7 +340,13 @@ Proof.
   extensionality l.
 Admitted.
 
+*)
+
 (*|
 .. [#] For the curious: by endowing :math:`2` with the discrete topology and :math:`2^\omega` with the product topology,
 the computable functions :math:`2^\omega \to 2^\omega` are continuous.
+
+.. [#] We will not be discussing coinduction or cofixpoints in this document, but the unfamiliar reader can safely ignore
+this detail, and treat the coinductive definitions as just special syntax for defining datatypes that have infinite
+values.
 |*)
