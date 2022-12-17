@@ -1,0 +1,549 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" class="alectryon-standalone" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<title>Transducers are Causal Functions</title>
+<script type="text/javascript" defer src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.0/es5/tex-mml-chtml.min.js?config=TeX-AMS_CHTML"></script>
+<link rel="stylesheet" href="alectryon.css" type="text/css" />
+<link rel="stylesheet" href="docutils_basic.css" type="text/css" />
+<link rel="stylesheet" href="pygments.css" type="text/css" />
+<script type="text/javascript" src="alectryon.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/IBM-type/0.5.4/css/ibm-type.min.css" integrity="sha512-sky5cf9Ts6FY1kstGOBHSybfKqdHR41M0Ldb0BjNiv3ifltoQIsg0zIaQ+wwdwgQ0w9vKFW7Js50lxH9vqNSSw==" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/firacode/5.2.0/fira_code.min.css" integrity="sha512-MbysAYimH1hH2xYzkkMHB6MqxBqfP0megxsCLknbYqHVwXTCg9IqHbk+ZP/vnhO8UEW6PaXAkKe2vQ+SWACxxA==" crossorigin="anonymous" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<div class="alectryon-root alectryon-centered"><div class="alectryon-banner">Built with <a href="https://github.com/cpitclaudel/alectryon/">Alectryon</a>, running Coq+SerAPI v8.16.0+0.16.1. Bubbles (<span class="alectryon-bubble"></span>) indicate interactive fragments: hover for details, tap to reveal contents. Use <kbd>Ctrl+↑</kbd> <kbd>Ctrl+↓</kbd> to navigate, <kbd>Ctrl+🖱️</kbd> to focus. On Mac, use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>.</div><div class="document" id="transducers-are-causal-functions">
+<h1 class="title">Transducers are Causal Functions</h1>
+
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Require Import</span> Coq.Lists.List.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Require Import</span> Coq.Program.Basics.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Require Import</span> Coq.Program.Equality.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Require Import</span> Coq.Logic.FunctionalExtensionality.</span></span></pre><p>Consider the set <span class="math">\(2^\omega\)</span> of infinite lists of natural numbers.</p>
+<p>What are the &quot;nice&quot; functions <span class="math">\(2^\omega \to 2^\omega\)</span>? 
+As indicated by the quotes, the answer to this question is highly dependent on your aesthetic preferences.
+Naturally, different people with different needs have proposed different answers based on a wide variety of values of &quot;nice&quot;.</p>
+<p>One potential value of &quot;nice&quot; is the vacuous one: all (mathematically definable) functions <span class="math">\(2^\omega \to 2^\omega\)</span> are allowed!
+Among these are functions that aren't even definable as functions in your favorite programming language,
+such as the function <span class="math">\(f : 2^\omega \to 2^\omega\)</span> defined by <span class="math">\(f(1^\omega) = 0^\omega\)</span> and  <span class="math">\(f(s) = s\)</span>: the function
+which is the identity everywhere, except for on the stream of all ones, where it's the stream of all zeroes.
+This function is clearly not computable in any sense: in order to determine even the first element of the output stream,
+all infinitely-many elements of the input need to be inspected.</p>
+<p>Restricting &quot;nice&quot; to mean &quot;computable&quot; restricts the class significantly. Indeed, the main result is 
+the rule out functions like the one above. A classic result in computability theory is that the computable
+functions <span class="math">\(f : 2^\omega \to 2^\omega\)</span> are <em>continous</em> in a particular sense <a class="footnote-reference" href="#footnote-1" id="footnote-reference-1">[1]</a> which means that any finite prefix
+of the output of <span class="math">\(f\)</span> can only depend on a finite prefix of its input.</p>
+<p>However, the computable functions can include some unwanted behavior. Of particular interest for the purposes of this
+piece is functions that &quot;go back on their word&quot;.
+A simple example of this is the function defined by the equations <span class="math">\(f(00s) = 01s\)</span>, <span class="math">\(f(01s) = 10s\)</span>, <span class="math">\(f(1s) = 1s\)</span>.
+To see why this might be undesierable, consider a situation where the input list to the function is being <em>streamed in</em>, bit by bit, from
+some outside source. Similarly, suppose the output is being produced bit by bit, and is fed to some similar transformation down the line.
+Unfortunately, the function <span class="math">\(f\)</span> cannot be implemented in this manner: if the first bit of input is a <span class="math">\(0\)</span>,
+the implementation must wait until the <em>second</em> bit arrives to emit the first bit of output. To faithfully implement this
+in such a &quot;stream transformer&quot; machine model, the machine would need the ability to either (a) block until the second bit arrives, or
+(b) emit a dummy value for the first output and then &quot;retract&quot; it once it got the second bit of input.</p>
+<p>Our goal in this document is to characterize the stream functions <span class="math">\(f : 2^\omega \to 2^\omega\)</span> which
+can be implemented as stream processing machines which are both (a) &quot;productive&quot;, in the sense that they always
+emit an output for each input, and (b) are &quot;truthful&quot; in the sense that they never have to go back on their word.</p>
+<p>To begin, let's define a coinductive <a class="footnote-reference" href="#footnote-2" id="footnote-reference-2">[2]</a>. type of streams, with elements drawn from a type <code class="highlight coq"><span class="n">A</span></code>.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk0" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk0"><span class="kn">Variable</span> <span class="nv">A</span> : <span class="kt">Type</span>.</label><small class="alectryon-output"><div><div class="alectryon-messages"><blockquote class="alectryon-message">Interpreting this declaration <span class="kr">as</span> <span class="kr">if</span> a <span class="kn">global</span>
+declaration prefixed <span class="bp">by</span> <span class="s2">&quot;Local&quot;</span>, i.e. <span class="kr">as</span> a <span class="kn">global</span>
+declaration which shall not be available without
+qualification when imported. [local-declaration,scope]</blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">CoInductive</span> <span class="nf">stream</span> : <span class="kt">Type</span> :=
+| SCons : A -&gt; stream -&gt; stream.</span></span></pre><p>More or less by definition, the functions <code class="highlight coq"><span class="n">stream</span> <span class="o">-&gt;</span> <span class="n">stream</span></code> which can be written in Coq
+are computable. Unfortunately, we must work a bit harder to get the other properties.</p>
+<p>Intuitively, both the truthfulness and productivity properties are facts about <em>prefixes</em> of streams.
+Truthfulness says that passing a larger prefix yields only a larger output, while productivity says
+precisely by how much the output should grow. Of course, while this makes intuitive sense, it's not
+immediately clear how to define these properties formally. After all, stream functions <code class="highlight coq"><span class="n">f</span> <span class="o">:</span> <span class="n">stream</span> <span class="o">-&gt;</span> <span class="n">stream</span></code>
+are defined on <em>entire</em> streams, not prefixes!</p>
+<p>The insight required to guide us past this quandry is that truthful, productive functions on prefixes of streams
+should actually be defined <em>in terms of</em> functions on their prefixes. To investigate this idea further, let's
+introduce a type of prefixes.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Inductive</span> <span class="nf">vec</span> : nat -&gt; <span class="kt">Type</span> :=
+| Empty : vec <span class="mi">0</span>
+| Snoc {n} : vec n -&gt; A -&gt; vec (S n).</span></span></pre><p>Above is a definition of length-indexed vectors, represented as snoc-lists.
+These will represent prefixes of streams.</p>
+<p>The most important (for our purposes) operation on vectors is truncation: deleting the
+last element. Because we've implemented vectors as length-indexed snoc lists,
+truncate is trivial to implment, as shown below.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">truncate</span> {<span class="nv">n</span> : nat} (<span class="nv">l</span> : vec (S n)) : vec n := 
+  <span class="kr">match</span> l <span class="kr">in</span> vec (S n) <span class="kr">return</span> vec n <span class="kr">with</span>
+  | Snoc l _ =&gt; l
+  <span class="kr">end</span>.</span></span></pre><p>We will also need the two &quot;standard&quot; list functions <code class="highlight coq"><span class="n">tail</span></code> and <code class="highlight coq"><span class="n">cons</span></code>, as well as some theorems relating them to <code class="highlight coq"><span class="n">Snoc</span></code> and <code class="highlight coq"><span class="n">truncate</span></code>.
+Rather than take time to explain these later, we will simply introduce them here.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Fixpoint</span> <span class="nf">cons</span> {<span class="nv">n</span> : nat} (<span class="nv">x</span> : A) (<span class="nv">l</span> : vec n) : vec (S n) :=
+  <span class="kr">match</span> l <span class="kr">in</span> vec n <span class="kr">return</span> vec (S n) <span class="kr">with</span>
+  | Empty =&gt; Snoc Empty x
+  | Snoc l&#39; y =&gt; Snoc (cons x l&#39;) y
+  <span class="kr">end</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk1" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk1"><span class="kn">Definition</span> <span class="nf">tail</span> {<span class="nv">n</span> : nat} (<span class="nv">l</span> : vec (S n)) : vec n.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S n)</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">vec n</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk2" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk2"><span class="nb">induction</span> n.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>l</var><span class="hyp-type"><b>: </b><span>vec <span class="mi">1</span></span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">vec <span class="mi">0</span></div></blockquote><div class="alectryon-extra-goals"><input class="alectryon-extra-goal-toggle" id="causal-v-chk3" style="display: none" type="checkbox"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S (S n))</span></span></span><br><span><var>IHn</var><span class="hyp-type"><b>: </b><span>vec (S n) -&gt; vec n</span></span></span><br></div><label class="goal-separator" for="causal-v-chk3"><hr></label><div class="goal-conclusion">vec (S n)</div></blockquote></div></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk4" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk4">-</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>l</var><span class="hyp-type"><b>: </b><span>vec <span class="mi">1</span></span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">vec <span class="mi">0</span></div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">exact</span> Empty.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk5" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk5">-</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S (S n))</span></span></span><br><span><var>IHn</var><span class="hyp-type"><b>: </b><span>vec (S n) -&gt; vec n</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">vec (S n)</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk6" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk6"><span class="nb">inversion</span> l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S (S n))</span></span></span><br><span><var>IHn</var><span class="hyp-type"><b>: </b><span>vec (S n) -&gt; vec n</span></span></span><br><span><var>n0</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>X</var><span class="hyp-type"><b>: </b><span>vec (S n)</span></span></span><br><span><var>X0</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>H0</var><span class="hyp-type"><b>: </b><span>n0 = S n</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">vec (S n)</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk7" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk7"><span class="nb">apply</span> (<span class="kr">fun</span> <span class="nv">u</span> =&gt; Snoc u X0).</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S (S n))</span></span></span><br><span><var>IHn</var><span class="hyp-type"><b>: </b><span>vec (S n) -&gt; vec n</span></span></span><br><span><var>n0</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>X</var><span class="hyp-type"><b>: </b><span>vec (S n)</span></span></span><br><span><var>X0</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>H0</var><span class="hyp-type"><b>: </b><span>n0 = S n</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">vec n</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk8" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk8"><span class="nb">apply</span> IHn.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S (S n))</span></span></span><br><span><var>IHn</var><span class="hyp-type"><b>: </b><span>vec (S n) -&gt; vec n</span></span></span><br><span><var>n0</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>X</var><span class="hyp-type"><b>: </b><span>vec (S n)</span></span></span><br><span><var>X0</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>H0</var><span class="hyp-type"><b>: </b><span>n0 = S n</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">vec (S n)</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">exact</span> X.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Defined</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk9" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk9"><span class="kn">Theorem</span> <span class="nf">cons_snoc</span> : <span class="kr">forall</span> <span class="nv">n</span> (<span class="nv">l</span> : vec n) <span class="nv">x</span> <span class="nv">y</span>, cons x (Snoc l y) = Snoc (cons x l) y.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec n) (<span class="nv">x</span> <span class="nv">y</span> : A),
+cons x (Snoc l y) = Snoc (cons x l) y</div></blockquote></div></div></small><span class="alectryon-wsp">  
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chka" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chka"><span class="kn">Proof</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec n) (<span class="nv">x</span> <span class="nv">y</span> : A),
+cons x (Snoc l y) = Snoc (cons x l) y</div></blockquote></div></div></small><span class="alectryon-wsp"> 
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chkb" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chkb"><span class="nb">intros</span> n l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> <span class="nv">y</span> : A, cons x (Snoc l y) = Snoc (cons x l) y</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chkc" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chkc"><span class="nb">dependent destruction</span> l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> <span class="nv">y</span> : A,
+cons x (Snoc Empty y) = Snoc (cons x Empty) y</div></blockquote><div class="alectryon-extra-goals"><input class="alectryon-extra-goal-toggle" id="causal-v-chkd" style="display: none" type="checkbox"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br></div><label class="goal-separator" for="causal-v-chkd"><hr></label><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> <span class="nv">y</span> : A,
+cons x (Snoc (Snoc l a) y) =
+Snoc (cons x (Snoc l a)) y</div></blockquote></div></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chke" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chke">-</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> <span class="nv">y</span> : A,
+cons x (Snoc Empty y) = Snoc (cons x Empty) y</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chkf" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chkf"><span class="nb">cbn</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> <span class="nv">y</span> : A,
+Snoc (Snoc Empty x) y = Snoc (Snoc Empty x) y</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk10" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk10">-</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> <span class="nv">y</span> : A,
+cons x (Snoc (Snoc l a) y) =
+Snoc (cons x (Snoc l a)) y</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk11" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk11"><span class="nb">intros</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a, x, y</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">cons x (Snoc (Snoc l a) y) =
+Snoc (cons x (Snoc l a)) y</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk12" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk12"><span class="nb">cbn</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a, x, y</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">Snoc (Snoc (cons x l) a) y =
+Snoc (Snoc (cons x l) a) y</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk13" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk13"><span class="kn">Theorem</span> <span class="nf">truncate_cons</span> : <span class="kr">forall</span> <span class="nv">n</span> (<span class="nv">l</span> : vec (S n)) <span class="nv">x</span>, truncate (cons x l) = cons x (truncate l).</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec (S n)) (<span class="nv">x</span> : A),
+truncate (cons x l) = cons x (truncate l)</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk14" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk14"><span class="kn">Proof</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec (S n)) (<span class="nv">x</span> : A),
+truncate (cons x l) = cons x (truncate l)</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk15" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk15"><span class="nb">intros</span> n l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S n)</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> : A,
+truncate (cons x l) = cons x (truncate l)</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk16" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk16"><span class="nb">dependent induction</span> l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S n0)),
+n = S n0 -&gt;
+l ~= l0 -&gt; <span class="kr">forall</span> <span class="nv">x</span> : A, truncate (cons x l0) = cons x (truncate l0)</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> : A,
+truncate (cons x (Snoc l a)) =
+cons x (truncate (Snoc l a))</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk17" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk17">-</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S n0)),
+n = S n0 -&gt;
+l ~= l0 -&gt; <span class="kr">forall</span> <span class="nv">x</span> : A, truncate (cons x l0) = cons x (truncate l0)</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> <span class="nv">x</span> : A,
+truncate (cons x (Snoc l a)) =
+cons x (truncate (Snoc l a))</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk18" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk18"><span class="nb">intros</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S n0)),
+n = S n0 -&gt;
+l ~= l0 -&gt; <span class="kr">forall</span> <span class="nv">x</span> : A, truncate (cons x l0) = cons x (truncate l0)</span></span></span><br><span><var>x</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">truncate (cons x (Snoc l a)) =
+cons x (truncate (Snoc l a))</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk19" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk19"><span class="nb">rewrite</span> cons_snoc.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S n0)),
+n = S n0 -&gt;
+l ~= l0 -&gt; <span class="kr">forall</span> <span class="nv">x</span> : A, truncate (cons x l0) = cons x (truncate l0)</span></span></span><br><span><var>x</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">truncate (Snoc (cons x l) a) =
+cons x (truncate (Snoc l a))</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk1a" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk1a"><span class="nb">cbn</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S n0)),
+n = S n0 -&gt;
+l ~= l0 -&gt; <span class="kr">forall</span> <span class="nv">x</span> : A, truncate (cons x l0) = cons x (truncate l0)</span></span></span><br><span><var>x</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">cons x l = cons x l</div></blockquote></div></div></small><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk1b" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk1b"><span class="kn">Theorem</span> <span class="nf">tail_snoc</span> : <span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec (S n)) <span class="nv">x</span>, tail (Snoc l x) = Snoc (tail l) x.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec (S n)) (<span class="nv">x</span> : A),
+tail (Snoc l x) = Snoc (tail l) x</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Admitted</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk1c" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk1c"><span class="kn">Theorem</span> <span class="nf">truncate_tail</span> : <span class="kr">forall</span> <span class="nv">n</span> (<span class="nv">l</span> : vec (S (S n))) , truncate (tail l) = tail (truncate l).</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><span class="goal-separator"><hr></span><div class="goal-conclusion"><span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec (S (S n))),
+truncate (tail l) = tail (truncate l)</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk1d" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk1d"><span class="nb">intros</span> n l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S (S n))</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">truncate (tail l) = tail (truncate l)</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk1e" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk1e"><span class="nb">dependent induction</span> l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec (S n)</span></span></span><br><span><var>a</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S (S n0))),
+S n = S (S n0) -&gt; l ~= l0 -&gt; truncate (tail l0) = tail (truncate l0)</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">truncate (tail (Snoc l a)) =
+tail (truncate (Snoc l a))</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk1f" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk1f"><span class="nb">dependent destruction</span> l.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a, a0</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S (S n0))),
+S n = S (S n0) -&gt; Snoc l a ~= l0 -&gt; truncate (tail l0) = tail (truncate l0)</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">truncate (tail (Snoc (Snoc l a) a0)) =
+tail (truncate (Snoc (Snoc l a) a0))</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk20" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk20"><span class="nb">cbn</span>.</label><small class="alectryon-output"><div><div class="alectryon-goals"><blockquote class="alectryon-goal"><div class="goal-hyps"><span><var>n</var><span class="hyp-type"><b>: </b><span>nat</span></span></span><br><span><var>l</var><span class="hyp-type"><b>: </b><span>vec n</span></span></span><br><span><var>a, a0</var><span class="hyp-type"><b>: </b><span>A</span></span></span><br><span><var>IHl</var><span class="hyp-type"><b>: </b><span><span class="kr">forall</span> (<span class="nv">n0</span> : nat) (<span class="nv">l0</span> : vec (S (S n0))),
+S n = S (S n0) -&gt; Snoc l a ~= l0 -&gt; truncate (tail l0) = tail (truncate l0)</span></span></span><br></div><span class="goal-separator"><hr></span><div class="goal-conclusion">nat_rect (<span class="kr">fun</span> <span class="nv">n</span> : nat =&gt; vec (S n) -&gt; vec n)
+  (<span class="kr">fun</span> <span class="nv">_</span> : vec <span class="mi">1</span> =&gt; Empty)
+  (<span class="kr">fun</span> (<span class="nv">n</span> : nat) (<span class="nv">IHn</span> : vec (S n) -&gt; vec n)
+     (<span class="nv">l</span> : vec (S (S n))) =&gt;
+   <span class="kr">match</span>
+     l <span class="kr">in</span> (vec n0) <span class="kr">return</span> (n0 = S (S n) -&gt; vec (S n))
+   <span class="kr">with</span>
+   | Empty =&gt;
+       <span class="kr">fun</span> <span class="nv">H</span> : <span class="mi">0</span> = S (S n) =&gt;
+       False_rect (vec (S n))
+         (eq_ind <span class="mi">0</span>
+            (<span class="kr">fun</span> <span class="nv">e</span> : nat =&gt;
+             <span class="kr">match</span> e <span class="kr">with</span>
+             | <span class="mi">0</span> =&gt; <span class="kt">True</span>
+             | S _ =&gt; <span class="kt">False</span>
+             <span class="kr">end</span>) I (S (S n)) H)
+   | @Snoc n0 x x0 =&gt;
+       <span class="kr">fun</span> <span class="nv">H</span> : S n0 = S (S n) =&gt;
+       eq_rect_r
+         (<span class="kr">fun</span> <span class="nv">n1</span> : nat =&gt; vec n1 -&gt; A -&gt; vec (S n))
+         (<span class="kr">fun</span> (<span class="nv">X</span> : vec (S n)) (<span class="nv">X0</span> : A) =&gt;
+          Snoc (IHn X) X0)
+         (<span class="nb">f_equal</span>
+            (<span class="kr">fun</span> <span class="nv">e</span> : nat =&gt;
+             <span class="kr">match</span> e <span class="kr">with</span>
+             | <span class="mi">0</span> =&gt; n0
+             | S n1 =&gt; n1
+             <span class="kr">end</span>) H) x x0
+   <span class="kr">end</span> eq_refl) n (Snoc l a) = tail (Snoc l a)</div></blockquote></div></div></small><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Admitted</span>.</span></span></pre><p>Truncation is particularly interesting because it lets us reframe streams in terms of their prefixes.
+A stream can be thought of as a family of vectors <code class="highlight coq"><span class="n">vs</span> <span class="o">:</span> <span class="kr">forall</span> <span class="nv">n</span><span class="o">,</span> <span class="n">vec</span> <span class="n">n</span></code>, one of each length,
+such that the <span class="math">\(n+1\)</span> st is just the <span class="math">\(n\)</span> th with one element tacked on to the end.
+Swapping the perspective around, this is to say that that <code class="highlight coq"><span class="n">vs</span> <span class="n">n</span> <span class="o">=</span> <span class="n">truncate</span> <span class="o">(</span><span class="n">vs</span> <span class="o">(</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="o">))</span></code>.
+Intuitively, this view of streams is consistent with their view as coinductively defined objects:
+they are lists that we may unfold to any finite depth.</p>
+<div class="section" id="causal-functions">
+<h1>Causal Functions</h1>
+<p>Viewing streams this way leads us to our first definition of productive &amp; truthful functions on streams!</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Record</span> <span class="nf">causal</span> : <span class="kt">Type</span> := mkCausal {
+  f : <span class="kr">forall</span> <span class="nv">n</span>, vec n -&gt; vec n;
+  caused : <span class="kr">forall</span> <span class="nv">n</span> <span class="nv">l</span>, f n (truncate l) = truncate (f (S n) l)
+}.</span></span></pre><p>For historical reasons, these objects are called &quot;causal functions&quot;, which consist of</p>
+<blockquote>
+<ol class="arabic simple">
+<li>A family of maps <code class="highlight coq"><span class="n">f</span> <span class="n">n</span> <span class="o">:</span> <span class="n">vec</span> <span class="n">n</span> <span class="o">-&gt;</span> <span class="n">vec</span> <span class="n">n</span></code> taking vectors of length <code class="highlight coq"><span class="n">n</span></code> to vectors of length <code class="highlight coq"><span class="n">n</span></code>. The typing
+ensures the <tt class="docutils literal"><span class="pre">one-at-a-time</span></tt> productivity of this family, viewed as a stream function.
+Vectors of length 1 yield vectors of length 1, and adding one more element to the input yields
+exactly one more element of output. But nothing in the type ensures that the first elmement
+remained the same. That's the job of the second component of the record, which consists of...</li>
+<li>Proofs that the family <code class="highlight coq"><span class="n">f</span></code> &quot;commutes with truncation&quot;, as shown in the commutative diagram below.
+Intuitively, <code class="highlight coq"><span class="n">f</span> <span class="n">n</span> <span class="o">(</span><span class="n">truncate</span> <span class="n">l</span><span class="o">)</span> <span class="o">=</span> <span class="n">truncate</span> <span class="o">(</span><span class="n">f</span> <span class="o">(</span><span class="n">S</span> <span class="n">n</span><span class="o">)</span> <span class="n">l</span><span class="o">)</span></code> says that <code class="highlight coq"><span class="n">f</span> <span class="n">n</span></code> and <code class="highlight coq"><span class="n">f</span> <span class="o">(</span><span class="n">S</span> <span class="n">n</span><span class="o">)</span></code> must agree on the
+first <code class="highlight coq"><span class="n">n</span></code> elements of their input.</li>
+</ol>
+</blockquote>
+<img alt="square.png" src="square.png" />
+<p>Causal maps naturally act as functions <code class="highlight coq"><span class="n">A</span> <span class="o">-&gt;</span> <span class="n">A</span></code> by considering the <code class="highlight coq"><span class="n">f</span> <span class="mi">1</span> <span class="o">:</span> <span class="n">vec</span> <span class="mi">1</span> <span class="o">-&gt;</span> <span class="n">vec</span> <span class="mi">1</span></code> component as a map on
+singleton lists.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><input class="alectryon-toggle" id="causal-v-chk21" style="display: none" type="checkbox"><label class="alectryon-input" for="causal-v-chk21"><span class="kn">Definition</span> <span class="nf">causalApply1</span> (<span class="nv">c</span> : causal) (<span class="nv">x</span> : A) : A :=
+  <span class="kr">match</span> f c <span class="mi">1</span> (Snoc Empty x) <span class="kr">in</span> vec <span class="mi">1</span> <span class="kr">return</span> A <span class="kr">with</span>
+  | Snoc _ y =&gt; y
+  <span class="kr">end</span>.</label><small class="alectryon-output"><div><div class="alectryon-messages"><blockquote class="alectryon-message">In environment
+c : causal
+x : A
+n : nat
+v : vec n
+y : A
+The term <span class="s2">&quot;y&quot;</span> has type <span class="s2">&quot;A&quot;</span>
+while it <span class="kr">is</span> expected to <span class="nb">have</span> type
+ <span class="s2">&quot;match n with</span>
+<span class="s2">  | 0 =&gt; A</span>
+<span class="s2">  | S n0 =&gt; ?T@{iV:=S n; v:=Snoc v y}</span>
+<span class="s2">  end&quot;</span>.</blockquote></div></div></small></span></pre><p>This should let us interpret causal functions as stream functions, i.e. turn a causal map
+that operates on finite prefixes of a stream into one that transforms whole streams.</p>
+<p>Intuitively, the process is straightforward. Given a causal function <code class="highlight coq"><span class="n">c</span></code>,
+we will define its interpreation as a stream map <code class="highlight coq"><span class="n">interpCausal</span> <span class="n">c</span> <span class="o">:</span> <span class="n">stream</span> <span class="o">-&gt;</span> <span class="n">stream</span></code> as the
+function which takes a stream <code class="highlight coq"><span class="n">SCons</span> <span class="n">x</span> <span class="n">s</span></code>, and returns the stream <code class="highlight coq"><span class="n">SCons</span> <span class="n">y</span> <span class="n">s'</span></code>,
+where <code class="highlight coq"><span class="n">y</span></code> is element of type <code class="highlight coq"><span class="n">A</span></code> given by</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">consMap</span> (<span class="nv">x</span> : A) (<span class="nv">f</span> : <span class="kr">forall</span> <span class="nv">n</span>, vec n -&gt; vec n) : <span class="kr">forall</span> <span class="nv">n</span>, vec n -&gt; vec n :=
+  <span class="kr">fun</span> <span class="nv">n</span> =&gt; <span class="kr">fun</span> <span class="nv">xs</span> =&gt; tail (f (S n) (cons x xs)).</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Theorem</span> <span class="nf">cons_caused</span>  : <span class="kr">forall</span> <span class="nv">x</span> <span class="nv">c</span> <span class="nv">n</span> <span class="nv">l</span>,
+consMap x (f c) n (truncate l) =
+truncate (consMap x (f c) (S n) l).</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Proof</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">intros</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">destruct</span> c <span class="kr">as</span> [f pf].</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">unfold</span> consMap.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">unfold</span> causal.f.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">rewrite</span> &lt;- truncate_cons.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">rewrite</span> pf.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">rewrite</span> truncate_tail.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">consCausal</span> (<span class="nv">x</span> : A) (<span class="nv">c</span> : causal) : causal := mkCausal (consMap x (f c)) (cons_caused x c).</span></span></pre><p><strong>Picture here!!</strong></p>
+<p>Causal maps interpret as streams.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">CoFixpoint</span> <span class="nf">interpCausal</span> (<span class="nv">c</span> : causal) (<span class="nv">s</span> : stream) : stream :=
+  <span class="kr">match</span> s <span class="kr">with</span>
+  | SCons x s =&gt; <span class="kr">let</span> <span class="nv">y</span> := causalApply1 c x <span class="kr">in</span>
+                 SCons y (interpCausal (consCausal x c) s)
+  <span class="kr">end</span>.</span></span></pre></div>
+<div class="section" id="transducers">
+<h1>Transducers</h1>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">CoInductive</span> <span class="nf">transd</span> : <span class="kt">Type</span> := 
+| Step : (A -&gt; A * transd) -&gt; transd.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">step</span> (<span class="nv">t</span> : transd) (<span class="nv">x</span> : A) : A * transd :=
+    <span class="kr">match</span> t <span class="kr">with</span>
+    | Step f =&gt; f x
+    <span class="kr">end</span>.</span></span></pre><p>These also interpret as stream maps</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">CoFixpoint</span> <span class="nf">interpTransd</span> (<span class="nv">t</span> : transd) (<span class="nv">s</span> : stream) : stream :=
+  <span class="kr">match</span> s <span class="kr">with</span>
+  | SCons x s&#39; =&gt; <span class="kr">let</span> (<span class="nv">y</span>,t&#39;) := step t x <span class="kr">in</span>
+                  SCons y (interpTransd t&#39; s&#39;)
+  <span class="kr">end</span>.</span></span></pre><p>and as vector maps</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Fixpoint</span> <span class="nf">stepN</span> {<span class="nv">n</span>} (<span class="nv">t</span> : transd) (<span class="nv">l</span> : vec n) : transd * vec n :=
+    <span class="kr">match</span> l <span class="kr">with</span>
+    | Empty =&gt; (t,Empty)
+    | Snoc l&#39; x =&gt; <span class="kr">let</span> (<span class="nv">t&#39;</span>,l&#39;&#39;) := stepN t l&#39; <span class="kr">in</span>
+                              <span class="kr">let</span> (<span class="nv">y</span>,t&#39;&#39;) := step t&#39; x <span class="kr">in</span>
+                              (t&#39;&#39;,Snoc l&#39;&#39; y)
+    <span class="kr">end</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">execN</span> (<span class="nv">t</span> : transd) : <span class="kr">forall</span> <span class="nv">n</span>, vec n -&gt; vec n := <span class="kr">fun</span> <span class="nv">n</span> <span class="nv">l</span> =&gt; snd (stepN t l).</span></span></pre><p>and these vector maps are causal! We can take an automata, and turn its execN into a causal map</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Theorem</span> <span class="nf">execN_snoc</span> : <span class="kr">forall</span> <span class="nv">t</span> <span class="nv">n</span> <span class="nv">l</span> <span class="nv">x</span>, execN t (S n) (Snoc l x) = Snoc (execN t n l) (<span class="kr">let</span> (<span class="nv">t&#39;</span>,_) := stepN t l <span class="kr">in</span> fst (step t&#39; x)).</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Proof</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">intros</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">unfold</span> execN.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">cbn</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">destruct</span> (stepN t l).</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">destruct</span> (step t0 x).</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">cbn</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Theorem</span> <span class="nf">execN_caused</span> (<span class="nv">t</span> : transd) :
+<span class="kr">forall</span> (<span class="nv">n</span> : nat) (<span class="nv">l</span> : vec (S n)),
+  execN t n (truncate l) = truncate (execN t (S n) l).</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Proof</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">intros</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">dependent induction</span> l.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">cbn</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">rewrite</span> execN_snoc.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">cbn</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Definition</span> <span class="nf">transdToCausal</span> (<span class="nv">t</span> : transd) : causal := mkCausal (execN t) (execN_caused t).</span></span></pre><p>We can also go backwards! Causal maps define automata.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">CoFixpoint</span> <span class="nf">causalToTransd</span> (<span class="nv">c</span> : causal) : transd :=
+  Step (<span class="kr">fun</span> <span class="nv">x</span> =&gt; <span class="kr">let</span> <span class="nv">y</span> := causalApply1 c x <span class="kr">in</span> (y, causalToTransd (consCausal x c))).</span></span></pre><p>This begs the roundtrip questions.</p>
+<pre class="alectryon-io highlight"><!-- Generator: Alectryon --><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Theorem</span> <span class="nf">vec_eta_0</span> : <span class="kr">forall</span> (<span class="nv">l</span> : vec <span class="mi">0</span>), l = Empty.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Proof</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">intros</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">dependent destruction</span> l.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Theorem</span> <span class="nf">vec_eta_S</span> : <span class="kr">forall</span> <span class="nv">n</span>, <span class="kr">forall</span> (<span class="nv">l</span> : vec (S n)), <span class="kr">exists</span> <span class="nv">x</span> , l = Snoc (truncate l) x.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Proof</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">intros</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">dependent destruction</span> l.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kr">exists</span> <span class="nv">a</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">auto</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+</span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Theorem</span> <span class="nf">causalAndBack</span> : <span class="kr">forall</span> <span class="nv">c</span> <span class="nv">n</span> <span class="nv">l</span>, f (transdToCausal (causalToTransd c)) n l = f c n l.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Proof</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">intros</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">dependent induction</span> l.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input">-</span><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">cbn</span>.</span><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">unfold</span> execN.</span><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">rewrite</span> vec_eta_0.</span><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="bp">reflexivity</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">  </span><span class="alectryon-sentence"><span class="alectryon-input">-</span><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">cbn</span>.</span><span class="alectryon-wsp"> </span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">rewrite</span> execN_snoc.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">    </span><span class="alectryon-sentence"><span class="alectryon-input"><span class="nb">unfold</span> execN.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-sentence"><span class="alectryon-input"><span class="kn">Qed</span>.</span><span class="alectryon-wsp">
+</span></span><span class="alectryon-wsp">
+
+
+<span class="c">(*Record omega_presheaf : Type := mkPresheaf {</span>
+<span class="c">  fam : nat -&gt; Type;</span>
+<span class="c">  restrict : forall n, fam (S n) -&gt; fam n</span>
+<span class="c">}.</span>
+<span class="c">*)</span>
+
+
+
+
+<span class="sd">(**</span>
+<span class="sd">Theorem trunc_0 : forall (l : vec 1), truncate l = Empty.</span>
+<span class="sd">Proof.</span>
+<span class="sd">Admitted.</span>
+
+
+
+<span class="sd">Definition vec_pshf : omega_presheaf := mkPresheaf vec (fun _ =&gt; truncate).</span>
+
+<span class="sd">Record omega_presheaf_nt (P : omega_presheaf) (Q : omega_presheaf) : Type := mkNT {</span>
+<span class="sd">  component : forall n, fam P n -&gt; fam Q n;</span>
+<span class="sd">  squares : forall n, compose (component n) (restrict P n) = compose (restrict Q n) (component (S n))</span>
+<span class="sd">}.</span>
+<span class="sd">*)</span>
+
+<span class="c">(* Is this the same as later???*)</span>
+<span class="c">(*</span>
+<span class="c">Definition shift (P : omega_presheaf) : omega_presheaf :=</span>
+<span class="c">  mkPresheaf (fun n =&gt; fam P (S n)) (fun n =&gt; restrict P (S n)).</span>
+
+<span class="c">Definition shiftNT_component {P Q} (alpha : omega_presheaf_nt P Q) : forall n, fam (shift P) n -&gt; fam (shift Q) n :=</span>
+<span class="c">  fun n =&gt; component P Q alpha (S n).</span>
+
+<span class="c">Theorem shiftNT_squares {P Q} (alpha : omega_presheaf_nt P Q) : forall n : nat,</span>
+<span class="c">compose</span>
+<span class="c">  (shiftNT_component alpha n)</span>
+<span class="c">  (restrict (shift P) n) =</span>
+<span class="c">compose (restrict (shift Q) n)</span>
+<span class="c">  (shiftNT_component alpha (S n)).</span>
+<span class="c">Proof.</span>
+<span class="c">  simpl. unfold shiftNT_component in *. intro n. apply (squares P Q alpha (S n)).</span>
+<span class="c">Qed.</span>
+
+<span class="c">Definition shiftNT {P Q} (alpha : omega_presheaf_nt P Q) : omega_presheaf_nt (shift P) (shift Q) :=</span>
+<span class="c">  mkNT (shift P) (shift Q) (shiftNT_component alpha) (shiftNT_squares alpha).</span>
+
+
+<span class="c">Definition unshiftvecNT_component (alpha : omega_presheaf_nt (shift vec_pshf) (shift vec_pshf)) : forall n : nat, fam vec_pshf n -&gt; fam vec_pshf n :=</span>
+<span class="c">    fun n =&gt; match n with</span>
+<span class="c">             | 0 =&gt; fun _ =&gt; Empty</span>
+<span class="c">             | S n&#39; =&gt; component (shift vec_pshf) (shift vec_pshf) alpha n&#39;</span>
+<span class="c">    end.</span>
+
+<span class="c">Theorem unshiftvecNT_squares (alpha : omega_presheaf_nt (shift vec_pshf) (shift vec_pshf)) : forall n : nat,</span>
+<span class="c">compose</span>
+<span class="c">  (unshiftvecNT_component alpha n)</span>
+<span class="c">  (restrict vec_pshf n) =</span>
+<span class="c">compose (restrict vec_pshf n)</span>
+<span class="c">  (unshiftvecNT_component alpha (S n)).</span>
+<span class="c">Proof.</span>
+<span class="c">simpl. induction n.</span>
+<span class="c"> - extensionality l. cbn. unfold compose. rewrite trunc_0. reflexivity.</span>
+<span class="c"> - simpl in *. apply (squares (shift vec_pshf) (shift vec_pshf) alpha).</span>
+<span class="c">Qed.</span>
+
+<span class="c">(* There&#39;s a nice picture to draw here of the commutative diagrram: shiftNT pushes the indexing up by one, so</span>
+<span class="c">   you have squares like</span>
+<span class="c">   A^{n+1} &lt;-- A^{n+2}</span>
+<span class="c">   |           |</span>
+<span class="c">   v           v</span>
+<span class="c">   A^{n+1} &lt;-- A^{n+2}</span>
+
+<span class="c">   but then, since P(0) = 1, you can glue on a square like</span>
+<span class="c">   1 &lt;-- A</span>
+<span class="c">   |     |</span>
+<span class="c">   v     v</span>
+<span class="c">   1 &lt;-- A</span>
+
+<span class="c">   to get a full NT.</span>
+<span class="c">   This should probably work for any NT shift P =&gt; shift Q, by tainng a singleton set to be the zero component.</span>
+<span class="c">   But this happens to be a vec_pshf anyway.</span>
+<span class="c">*)</span>
+<span class="c">Definition unshiftvecNT (alpha : omega_presheaf_nt (shift vec_pshf) (shift vec_pshf)) : omega_presheaf_nt vec_pshf vec_pshf :=</span>
+<span class="c">    mkNT vec_pshf vec_pshf (unshiftvecNT_component alpha) (unshiftvecNT_squares alpha).</span>
+
+<span class="c">Definition len1Proj (x : fam vec_pshf 1) : A.</span>
+<span class="c">Proof.</span>
+<span class="c">simpl in *. inversion x. apply X0.</span>
+<span class="c">Qed.</span>
+
+<span class="c">Definition headApply (alpha : omega_presheaf_nt vec_pshf vec_pshf) : A -&gt; A :=</span>
+<span class="c">  fun a =&gt; let l1 : fam vec_pshf 1 := Snoc Empty a in</span>
+<span class="c">           let l2 : fam vec_pshf 1 := component _ _ alpha 1 l1 in</span>
+<span class="c">           len1Proj l2.</span>
+
+<span class="c">CoFixpoint fromNT (alpha : omega_presheaf_nt vec_pshf vec_pshf) : transd :=</span>
+<span class="c">  Step (fun a =&gt; (headApply alpha a, fromNT (unshiftvecNT (shiftNT alpha)))).</span>
+
+<span class="c">Check vec_rec.</span>
+
+
+
+<span class="c">Theorem exec_S {n} : forall m (l : vec n) x, exists y, (execN m (Snoc l x) = Snoc (execN m l) y /\ (y = let (m&#39;,l&#39;) := stepN m l in fst (step m&#39; x))).</span>
+<span class="c">Proof.</span>
+<span class="c">  intros.</span>
+<span class="c">  exists (let (m&#39;,_) := stepN m l in fst (step m&#39; x)).</span>
+<span class="c">  unfold execN.</span>
+<span class="c">  cbn.</span>
+<span class="c">  destruct (stepN m l) as [m&#39; l&#39;].</span>
+<span class="c">  destruct (step m&#39; x) as [y m&#39;&#39;].</span>
+<span class="c">  cbn.</span>
+<span class="c">  auto.</span>
+<span class="c">Qed.</span>
+
+<span class="c">Theorem toNT_squares (m : transd) :</span>
+<span class="c">  forall n : nat,</span>
+<span class="c">   compose (execN m) (restrict vec_pshf n) =</span>
+<span class="c">   compose (restrict vec_pshf n) (execN m).</span>
+<span class="c">Proof.</span>
+<span class="c">intros.</span>
+<span class="c">induction n.</span>
+<span class="c">- simpl. extensionality l. unfold compose. rewrite trunc_0. simpl. rewrite trunc_0. reflexivity.</span>
+<span class="c">- extensionality l. simpl in *. unfold compose in *.</span>
+<span class="c">  assert (exists x , l = Snoc (truncate l) x) by (apply vec_eta_S).</span>
+<span class="c">  destruct H.</span>
+<span class="c">  rewrite -&gt; H.</span>
+<span class="c">  cbn.</span>
+<span class="c">  assert (exists y, (execN m (Snoc (truncate l) x) = Snoc (execN m (truncate l)) y) /\ _) by (apply exec_S).</span>
+<span class="c">  destruct H0 as [y [HSnoc _]].</span>
+<span class="c">  rewrite -&gt; HSnoc.</span>
+<span class="c">  cbn.</span>
+<span class="c">  reflexivity.</span>
+<span class="c">Qed.</span>
+
+<span class="c">Definition toNT (m : transd) : omega_presheaf_nt vec_pshf vec_pshf :=</span>
+<span class="c">    mkNT vec_pshf vec_pshf (fun n =&gt; execN m) (toNT_squares m).</span>
+
+<span class="c">(*</span>
+<span class="c">* - Clear conception of who the audience is –– why do they care about this equivalence?</span>
+<span class="c">* - Rewrite the prof in places where it&#39;s not easy to follow: naming, tactics, etc. Make it maximally understandable.</span>
+<span class="c">* - Critical pass w/ alectryon for state management.</span>
+<span class="c">* - Potentailly, an appenndix with thoughts on the process of turning the proof into a literate one.</span>
+<span class="c">* - Ensure you have a trial reader!</span>
+<span class="c">*)</span>
+
+<span class="c">Theorem inv1 : forall alpha n, component _ _ (toNT (fromNT alpha)) n = component _ _ alpha n.</span>
+<span class="c">Proof.</span>
+<span class="c">  intros.</span>
+<span class="c">  cbn.</span>
+<span class="c">  extensionality l.</span>
+<span class="c">Admitted.</span>
+
+<span class="c">*)</span></span></pre><table class="docutils footnote" frame="void" id="footnote-1" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#footnote-reference-1">[1]</a></td><td>For the curious: by endowing <span class="math">\(2\)</span> with the discrete topology and <span class="math">\(2^\omega\)</span> with the product topology,</td></tr>
+</tbody>
+</table>
+<div class="system-message">
+<p class="system-message-title">System Message: WARNING/2 (<tt class="docutils">causal.v</tt>, line 482)</p>
+Explicit markup ends without a blank line; unexpected unindent.</div>
+<p>the computable functions <span class="math">\(2^\omega \to 2^\omega\)</span> are continuous.</p>
+<table class="docutils footnote" frame="void" id="footnote-2" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#footnote-reference-2">[2]</a></td><td>We will not be discussing coinduction or cofixpoints in this document, but the unfamiliar reader can safely ignore</td></tr>
+</tbody>
+</table>
+<div class="system-message">
+<p class="system-message-title">System Message: WARNING/2 (<tt class="docutils">causal.v</tt>, line 485)</p>
+Explicit markup ends without a blank line; unexpected unindent.</div>
+<p>this detail, and treat the coinductive definitions as just special syntax for defining datatypes that have infinite
+values.</p>
+</div>
+<div class="section" id="reflections-on-literate-programming-in-coq">
+<h1>Reflections on Literate Programming in Coq</h1>
+<p>This document was written as my final project in Prof. Andrew Head's course
+&quot;Live and Literate Programming&quot; in Fall 2022. After a semester of studying literate programing,
+this case study left me with a few take-aways and recommendations for future designers of literate programming
+tools for theorem provers like Coq.</p>
+<ul class="simple">
+<li>Literate programming tools should never enforce that the code in the woven (pdf/html output) view
+appear in the same order as it does in the original code view.
+Unfortunately, Alectryon requires definition-order documents. I would much prefer something like Torii where I can weave the code
+together in an order that makes pedagogical sense, but does not necessarily pass the proof checker. The
+writing style in this document is severely hampered by the need to present everything before it appears.</li>
+<li>Alectryon does not permit the hiding of definition bodies. Many of the theorems and definitions that appear in this document are &quot;standard&quot;
+in the sense that they require little mathematical insight to prove or develop. Some examples include the <code class="highlight coq"><span class="n">cons</span></code> and <code class="highlight coq"><span class="n">tail</span></code> functions
+on snoc-lists, as well as the compatability theorems like <code class="highlight coq"><span class="n">cons_snoc</span></code> or <code class="highlight coq"><span class="n">truncate_cons</span></code>. Unfortunately,
+Alectryon requires that if the statements and type signatures of these theorems and definitions are
+to be shown in the document, then their proofs and bodies must also be shown. This is significant cruft that
+draws the reader away from their real task understanding the <em>imporant</em> theorems and definitions.</li>
+<li>Alectryon is very difficult to write without the use of a custom emacs-based editing tool which allows one to
+fluidly change back and forth between code-primary and markdown-primary views. The philosophy of the tool
+is that neither view should be considered &quot;primary&quot;, and that there is no third view that the code and markdown compile
+from. In practice, however, without the use of the emacs tool, the Coq format quickly becomes primary.</li>
+</ul>
+</div>
+<div class="system-messages section">
+<h1>Docutils System Messages</h1>
+<div class="system-message">
+<p class="system-message-title">System Message: ERROR/3 (<tt class="docutils">causal.v</tt>, line 198)</p>
+Coq raised an exception:
+  &gt; In environment
+  &gt; c : causal
+  &gt; x : A
+  &gt; n : nat
+  &gt; v : vec n
+  &gt; y : A
+  &gt; The term &quot;y&quot; has type &quot;A&quot; while it is expected to have type
+  &gt;  &quot;match n with
+  &gt;   | 0 =&gt; A
+  &gt;   | S n0 =&gt; ?T&#64;{iV:=S n; v:=Snoc v y}
+  &gt;   end&quot;.
+The offending chunk is delimited by &gt;&gt;&gt;…&lt;&lt;&lt; below:
+  &gt; Definition causalApply1 (c : causal) (x : A) : A :=
+  &gt;   match f c 1 (Snoc Empty x) in vec 1 return A with
+  &gt;   | Snoc _ y =&gt; &gt;&gt;&gt;y&lt;&lt;&lt;
+  &gt;   end.
+Results past this point may be unreliable.</div>
+</div>
+</div>
+</div></body>
+</html>

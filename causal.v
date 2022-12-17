@@ -173,15 +173,33 @@ For historical reasons, these objects are called "causal functions", which consi
 |*)
 
 (*|
-
+Causal maps naturally act as functions `A -> A` by considering the `f 1 : vec 1 -> vec 1` component as a map on
+singleton lists. 
 |*)
 
+Definition causalApply1 (c : causal) (x : A) : A :=
+  match f c 1 (Snoc Empty x) in vec 1 return A with
+  | Snoc _ y => y
+  end.
 
-Definition causalApply1 (c : causal) (x : A) : A.
-Admitted.
+(*|
+This should let us interpret causal functions as stream functions, i.e. turn a causal map
+that operates on finite prefixes of a stream into one that transforms whole streams.
 
+Intuitively, the process is straightforward. Given a causal function `c`,
+we will define its interpreation as a stream map `interpCausal c : stream -> stream` as the
+function which takes a stream `SCons x s`, and returns the stream `SCons y s'`,
+where `y` is the result of using `c` as a function `A -> A` and passing `x`, and `s'` is the
+result of the recursive call.
 
+This intuitive idea is translated into code below.
+|*)
 
+CoFixpoint interpCausalWrong (c : causal) (s : stream) : stream :=
+  match s with
+  | SCons x s => let y := causalApply1 c x in
+                 SCons y (interpCausal c s)
+  end.
 
 Definition consMap (x : A) (f : forall n, vec n -> vec n) : forall n, vec n -> vec n :=
   fun n => fun xs => tail (f (S n) (cons x xs)).
@@ -211,8 +229,8 @@ Causal maps interpret as streams.
 
 CoFixpoint interpCausal (c : causal) (s : stream) : stream :=
   match s with
-  | SCons x s' => let y := causalApply1 c x in
-                  SCons y (interpCausal (consCausal x c) s')
+  | SCons x s => let y := causalApply1 c x in
+                 SCons y (interpCausal (consCausal x c) s)
   end.
 
 
@@ -472,4 +490,32 @@ the computable functions :math:`2^\omega \to 2^\omega` are continuous.
 .. [#] We will not be discussing coinduction or cofixpoints in this document, but the unfamiliar reader can safely ignore
 this detail, and treat the coinductive definitions as just special syntax for defining datatypes that have infinite
 values.
+|*)
+
+(*|
+Reflections on Literate Programming in Coq
+==========================================
+
+This document was written as my final project in Prof. Andrew Head's course
+"Live and Literate Programming" in Fall 2022. After a semester of studying literate programing,
+this case study left me with a few take-aways and recommendations for future designers of literate programming
+tools for theorem provers like Coq.
+
+* Literate programming tools should never enforce that the code in the woven (pdf/html output) view
+  appear in the same order as it does in the original code view.
+  Unfortunately, Alectryon requires definition-order documents. I would much prefer something like Torii where I can weave the code
+  together in an order that makes pedagogical sense, but does not necessarily pass the proof checker. The
+  writing style in this document is severely hampered by the need to present everything before it appears.
+
+* Alectryon does not permit the hiding of definition bodies. Many of the theorems and definitions that appear in this document are "standard"
+  in the sense that they require little mathematical insight to prove or develop. Some examples include the `cons` and `tail` functions
+  on snoc-lists, as well as the compatability theorems like `cons_snoc` or `truncate_cons`. Unfortunately,
+  Alectryon requires that if the statements and type signatures of these theorems and definitions are
+  to be shown in the document, then their proofs and bodies must also be shown. This is significant cruft that
+  draws the reader away from their real task understanding the *imporant* theorems and definitions.
+
+* Alectryon is very difficult to write without the use of a custom emacs-based editing tool which allows one to
+  fluidly change back and forth between code-primary and markdown-primary views. The philosophy of the tool
+  is that neither view should be considered "primary", and that there is no third view that the code and markdown compile
+  from. In practice, however, without the use of the emacs tool, the Coq format quickly becomes primary.
 |*)
