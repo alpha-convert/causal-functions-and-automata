@@ -277,6 +277,16 @@ CoInductive transd (A : Type) (B : Type): Type :=
 Of course, nothing in the type discipline prevents us from using the same `f` multiple times
 and ignoring the output `transd`, so we will just have to be careful about not accidentally reusing stale states.
 
+Because stepping the transducer requires a pattern match, we wrap this behavior in a function `step : transd A B -> A -> B * (transd A B)`,
+defined below.
+|*)
+
+Definition step {A B} (t : transd A B) (x : A) : B * transd A B :=
+    match t with
+    | T _ _ f => f x
+    end.
+
+(*|
 To get a sense of how transducers work, let's define a transducer which computes the partial sums of its input.
 |*)
 
@@ -290,10 +300,6 @@ This transducer accumulates a running total `n` of the values it's seen so far. 
 an input `x`, it outputs `x + n`, and transitions to a new state where the running total *is* `x + n`.
 |*)
 
-Definition step {A B} (t : transd A B) (x : A) : B * transd A B :=
-    match t with
-    | T _ _ f => f x
-    end.
 
 (*|
 Transducers straightforwardly interpret 
@@ -336,7 +342,8 @@ Theorem execN_caused {A B} (t : transd A B) : forall (n : nat) (l : vec _ (S n))
   execN t n (truncate l) = truncate (execN t (S n) l).
 Proof.
   intros.
-  dependent induction l.
+  (*| We begin by using the `dependent destruction` tactic, which uses the fact that `l` has length at least one to refine our goal to handling the case where `l` is actually `Snoc l a`. |*)
+  dependent destruction l. (* .unfold -.h(A) -.h(B) *)
   cbn.
   rewrite execN_snoc.
   cbn.
@@ -369,9 +376,33 @@ This document was written as my final project in Prof. Andrew Head's course
 "Live and Literate Programming" in Fall 2022. After a semester of studying literate programing,
 this case study left me with a few take-aways and recommendations for future designers of literate programming
 tools for theorem provers like Coq.
-* Literate programming tools should never enforce that the code in the woven (pdf/html output) view appear in the same order as it does in the original code view. Unfortunately, Alectryon requires definition-order documents. I would much prefer something like Torii where I can weave the code together in an order that makes pedagogical sense, but does not necessarily pass the proof checker. The writing style in this document is severely hampered by the need to present everything before it appears.
-* Alectryon does not permit the hiding of definition bodies. Many of the theorems and definitions that appear in this document are "standard" in the sense that they require little mathematical insight to prove or develop. Some examples include the `cons` and `tail` functions on snoc-lists, as well as the compatability theorems like `cons_snoc` or `truncate_cons`. Unfortunately, Alectryon requires that if the statements and type signatures of these theorems and definitions are to be shown in the document, then their proofs and bodies must also be shown. This is significant cruft that draws the reader away from their real task understanding the *imporant* theorems and definitions.
-* Alectryon is very difficult to write without the use of a custom emacs-based editing tool which allows one to fluidly change back and forth between code-primary and markdown-primary views. The philosophy of the tool is that neither view should be considered "primary", and that there is no third view that the code and markdown compile from. In practice, however, without the use of the emacs tool, the Coq format quickly becomes primary.
+
+* Literate programming tools should never enforce that the code in the woven
+  (pdf/html output) view appear in the same order as it does in the original code
+  view. Unfortunately, Alectryon requires definition-order documents. I would much
+  prefer something like Torii where I can weave the code together in an order that
+  makes pedagogical sense, but does not necessarily pass the proof checker. The
+  writing style in this document is severely hampered by the need to present
+  everything before it appears.
+
+* Alectryon does not permit the hiding of definition bodies. Many of the theorems
+  and definitions that appear in this document are "standard" in the sense that
+  they require little mathematical insight to prove or develop. Some examples
+  include the `cons` and `tail` functions on snoc-lists, as well as the
+  compatability theorems like `cons_snoc` or `truncate_cons`. Unfortunately,
+  Alectryon requires that if the statements and type signatures of these theorems
+  and definitions are to be shown in the document, then their proofs and bodies
+  must also be shown. This is significant cruft that draws the reader away from
+  their real task understanding the *imporant* theorems and definitions.
+
+* It is very difficult to write an Alectryon document without the use of the
+  library's custom emacs-based editing tool which allows one to fluidly change
+  back and forth between code-primary and markdown-primary views. The philosophy
+  of the tool is that neither view should be considered "primary", and that there
+  is no third view that the code and markdown compile from. In practice, however,
+  without the use of the emacs extension (or emacs altogether), the Coq format
+  quickly becomes primary.
+
 
 |*)
 
