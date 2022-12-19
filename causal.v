@@ -87,48 +87,8 @@ Definition truncate {A} {n : nat} (l : vec A (S n)) : vec A n :=
   | Snoc _ l _ => l
   end.
 
-(*| We will also need the two "standard" list functions `tail` and `cons`, as well as some theorems relating them to `Snoc` and `truncate`.
-Rather than take time to explain these later, we will simply introduce them here. |*)
 
-Fixpoint cons {A} {n : nat} (x : A) (l : vec A n) : vec A (S n) :=
-  match l in vec _ n return vec _ (S n) with
-  | Empty _ => Snoc _ (Empty _) x
-  | Snoc _ l' y => Snoc _ (cons x l') y
-  end.
 
-Definition tail {A} {n : nat} (l : vec A (S n)) : vec A n.
-induction n.
-- exact (Empty A).
-- inversion l. apply (fun u => Snoc _ u X0). apply IHn. exact X.
-Defined.
-
-Require Import Coq.Program.Basics.
-Require Import Coq.Program.Equality.
-
-Theorem cons_snoc {A} : forall n (l : vec A n) x y, cons x (Snoc _ l y) = Snoc _ (cons x l) y.  
-Proof. 
-intros n l.
-dependent destruction l.
-- cbn. reflexivity.
-- intros. cbn. reflexivity.
-Qed.
-
-Theorem truncate_cons {A} : forall n (l : vec A (S n)) x, truncate (cons x l) = cons x (truncate l).
-Proof.
-  intros n l.
-  dependent induction l.
-  - intros. rewrite cons_snoc. cbn. reflexivity.
-Qed.
-
-Theorem tail_snoc {A} : forall (n : nat) (l : vec A (S n)) x, tail (Snoc _ l x) = Snoc _ (tail l) x.
-Admitted.
-
-Theorem truncate_tail {A} : forall n (l : vec A (S (S n))) , truncate (tail l) = tail (truncate l).
-intros n l.
-dependent induction l.
-dependent destruction l.
-cbn.
-Admitted.
 
 (*|
 Truncation is particularly interesting because it lets us reframe streams in terms of their prefixes.
@@ -365,6 +325,8 @@ Proof.
   reflexivity.
 Qed.
 
+Require Import Coq.Program.Basics.
+Require Import Coq.Program.Equality.
 
 Theorem execN_caused {A B} (t : transd A B) : forall (n : nat) (l : vec _ (S n)),
   execN t n (truncate l) = truncate (execN t (S n) l).
@@ -414,14 +376,30 @@ and transducers define the same set of stream functions, it remains to show the 
 We define these equivalence relations and theorems below – I have yet to prove them.
 |*)
 
+Definition head {A} (s : stream A) : A :=
+  match s with
+  | SCons _ x _ => x
+  end.
+
+Definition tail {A} (s : stream A) : stream A :=
+  match s with
+  | SCons _ _ s' => s'
+  end.
+
+
 CoInductive stream_eq {A} : stream A -> stream A -> Prop :=
-| Eq_SCons : forall x s s', stream_eq s s' -> stream_eq (SCons _ x s) (SCons _ x s').
+| Eq_SCons : forall s s', head s = head s' -> stream_eq (tail s) (tail s') -> stream_eq s s'.
 
 Definition causal_eq {A B} (c : causal A B) (c' : causal A B) :=
   forall n l, f _ _ c n l = f _ _ c' n l.
 
 CoInductive transd_eq {A B} : transd A B -> transd A B -> Prop :=
-| Eq_T : forall f f', (forall (x : A), (fst (f x)) = (fst (f' x)) /\ transd_eq (snd (f x)) (snd (f' x))) -> transd_eq (T _ _ f) (T _ _ f').
+| Eq_T : forall t t', (forall (x : A), (fst (step t x)) = (fst (step t' x)) /\ transd_eq (snd (step t x)) (snd (step t' x))) -> transd_eq t t'.
+
+Theorem vec_eta_0 {A} : forall (l : vec A 0), l = Empty A.
+Proof.
+  dependent induction l. reflexivity.
+Qed.
 
 Theorem causalToTransdAndBack {A B} :
   forall (c : causal A B), causal_eq c (transdToCausal (causalToTransd c)).
@@ -433,15 +411,56 @@ Theorem transdToCausalAndBack {A B} :
 Proof.
 Admitted.
 
+Theorem interpCausalAux_cong {A B} :
+  forall (c c' : causal A B), causal_eq c c' -> forall s, forall n (l : vec A n), stream_eq (interpCausalAux c l s) (interpCausalAux c' l s).
+Proof.
+  intros c c' eqpf; simpl.
+  cofix coIH.
+  intros s n l.
+  destruct s.
+  apply Eq_SCons.
+  - cbn.
+    unfold causalApplySnoc.
+    assert (f _ _ c (S n) (Snoc _ l a) = f _ _ c' (S n) (Snoc _ l a)) by (apply eqpf).
+    rewrite H.
+    reflexivity.
+  - cbn. apply coIH.
+Qed.
+  
 Theorem interpCausal_cong {A B} :
   forall (c c' : causal A B), causal_eq c c' -> forall s, stream_eq (interpCausal c s) (interpCausal c' s).
 Proof.
-Admitted.
+  intros.
+  apply interpCausalAux_cong.
+  apply H.
+Qed.
 
 Theorem interpTransd_cong {A B} :
   forall (t t' : transd A B), transd_eq t t' -> forall s, stream_eq (interpTransd t s) (interpTransd t' s).
 Proof.
-Admitted.
+  cofix coIH.
+  intros t t' pf.
+  intro s.
+  destruct s.
+  destruct pf as [t t' pf].
+  apply Eq_SCons.
+  - unfold head.
+    cbn.
+    assert (fst (step t a) = fst (step t' a)) by (apply pf).
+    destruct (step t a).
+    destruct (step t' a).
+    cbn in H.
+    apply H.
+  - unfold tail. cbn.
+    assert (transd_eq (snd (step t a)) (snd (step t' a))) by (apply pf).
+    destruct (step t a).
+    destruct (step t' a).
+    cbn in H.
+    apply coIH.
+    apply H.
+Qed.
+
+
 
 (*|
 .. [#] For the curious: by endowing :math:`2` with the discrete topology and :math:`2^\omega` with the product topology, the computable functions :math:`2^\omega \to 2^\omega` are continuous.
