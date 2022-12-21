@@ -481,6 +481,12 @@ Proof.
     auto.
 Qed.
 
+(*|
+Naturally, we also want to prove the other direction of the round trip.
+This requies a fairly involved generalization of the coinductive hypothesis (found in `transdToCausalAndBack_aux`),
+from which the actual theorem (`transdToCausalAndBack`) follows directly.
+|*)
+
 Lemma transdToCausalAndBack_aux {A B} : forall (t : transd A B) n (l : vec A n),
   transd_eq
   (fst (stepN t l))
@@ -509,19 +515,27 @@ Proof.
     apply coIH.
 Qed.
 
+
+
 Theorem transdToCausalAndBack {A B} :
   forall (t : transd A B), transd_eq t (causalToTransd (transdToCausal t)).
 Proof.
-  cofix coIH.
   intro t.
   assert (transd_eq
   (fst (stepN t (Empty _)))
   (causalToTransdAux (transdToCausal t) (Empty _))) by (apply transdToCausalAndBack_aux).
   cbn in H.
-  unfold causalToTransd.
   exact H.
 Qed.
 
+(*|
+But the fact that the functions between `causal A B` and `transd A B` are inverses up to
+our custom equivalence relations doesn't mean that the stream types they define are the same!
+For that we'll need that the interpretation functions for causal functions and transducers
+respect the respective equivalences.
+
+
+|*)
 
 Lemma interpCausalAux_cong {A B} :
   forall (c c' : causal A B), causal_eq c c' -> forall s, forall n (l : vec A n), stream_eq (interpCausalAux c l s) (interpCausalAux c' l s).
@@ -571,8 +585,6 @@ Proof.
     apply coIH.
     apply H.
 Qed.
-
-
 
 (*|
 .. [#] For the curious: by endowing :math:`2` with the discrete topology and :math:`2^\omega` with the product topology, the computable functions :math:`2^\omega \to 2^\omega` are continuous.
