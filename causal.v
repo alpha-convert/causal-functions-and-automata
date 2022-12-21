@@ -371,6 +371,9 @@ and transducers define the same set of stream functions, it remains to show the 
  2. Equivalent causal functions and equivalent trandsucers are interpreted as equivalent stream functions: i.e. the functions
     `interpCausal` and `interpTransd` are congruences.
 
+
+We begin by defining the equivalence relations in question. Stream equialence is defined as the standard extensional equality
+on streams: two streams are equivalent if their heads are equal, and their tails are equivalent.
 |*)
 
 Definition head {A} (s : stream A) : A :=
@@ -386,13 +389,31 @@ Definition tail {A} (s : stream A) : stream A :=
 CoInductive stream_eq {A} : stream A -> stream A -> Prop :=
 | Eq_SCons : forall s s', head s = head s' -> stream_eq (tail s) (tail s') -> stream_eq s s'.
 
+(*|
+The natural notion of equality for causal functioins is that of extensional equality of their components.
+Note that `causal_eq c c'` is different from strict equality `c = c'` for two reasons. For one, it disregards
+the `caused` component of `c` and `c'`: this is a way of rendering the equality proofs irrelevant without having
+them live in `SProp`. Second, the equality is extensional, commponentwise: to say that `f _ _ c = f _ _ c'` would
+be far too strong in coq's type theory.
+|*)
+
 Definition causal_eq {A B} (c : causal A B) (c' : causal A B) :=
   forall n l, f _ _ c n l = f _ _ c' n l.
+
+(*|
+Finally, transducer equality is the natural extensional equality: two transducers are equivalent if,
+for any `x : A`, their outputs are equal, and they step to equivalent transducers.
+|*)
 
 CoInductive transd_eq {A B} : transd A B -> transd A B -> Prop :=
 | Eq_T : forall t t', (forall (x : A), (fst (step t x)) = (fst (step t' x)) /\ transd_eq (snd (step t x)) (snd (step t' x))) -> transd_eq t t'.
 
-Definition last {A} {n : nat} (l : vec A (S n)) : A := 
+(*|
+Proving these equivalences will require quite a few lemmata. We begin with two "eta laws" about vectors,
+deconstructing values of type `vec A n` into terms with constructors at their heads based on `n`.
+|*)
+
+Definition last {A} {n : nat} (l : vec A (S n)) : A :=
   match l in vec _ (S n) return A with
   | Snoc _ _ x => x
   end.
@@ -413,17 +434,14 @@ Lemma causalApplySnoc_correct {A B} :
 Proof.
   intro c.
   dependent induction l; intro x.
-  - unfold causalApplySnoc. rewrite (vec_eta_S 0 (f _ _ c 1 (Snoc _ (Empty _) x))). cbn. reflexivity.
-  - unfold causalApplySnoc. rewrite (vec_eta_S (S n) (f A B c (S (S n)) (Snoc A (Snoc A l a) x))). cbn. reflexivity.
-Qed.
-
-Lemma causalToTransdAux_step_correct {A B} : forall (c : causal A B) n (l : vec A n) x,
-  step (causalToTransdAux c l) x = (last (f _ _ c _ (Snoc _ l x)), causalToTransdAux c (Snoc A l x)).
-Proof.
-  intros.
-  cbn.
-  rewrite causalApplySnoc_correct.
-  reflexivity.
+  - unfold causalApplySnoc.
+    rewrite (vec_eta_S 0 (f _ _ c 1 (Snoc _ (Empty _) x))).
+    cbn.
+    reflexivity.
+  - unfold causalApplySnoc.
+    rewrite (vec_eta_S (S n) (f A B c (S (S n)) (Snoc A (Snoc A l a) x))).
+    cbn.
+    reflexivity.
 Qed.
 
 Lemma causalToTransd_stepN_correct {A B} : forall c n l, stepN (causalToTransd c) l = (causalToTransdAux c l, f A B c n l).
@@ -431,12 +449,23 @@ Proof.
   intros.
   unfold execN.
   dependent induction l.
-  - cbn. unfold causalToTransd. rewrite (vec_eta_0 (f A B c 0 _)). reflexivity.
-  - cbn. rewrite IHl. rewrite causalToTransdAux_step_correct.
+  - cbn.
+    unfold causalToTransd.
+    rewrite (vec_eta_0 (f A B c 0 _)).
+    reflexivity.
+  - cbn.
+    rewrite IHl.
+    cbn.
+    rewrite causalApplySnoc_correct.
     rewrite (vec_eta_S n (f A B c (S n) (Snoc A l a))).
     cbn.
     rewrite <- (caused _ _ c n (Snoc _ l a)). reflexivity.
 Qed.
+
+(*|
+Now, we can prove one of the two round-trip directions: given a causal function,
+turning it into a transducer and then back into a causal function, yields an equivalent causal function to the original.
+|*)
 
 Theorem causalToTransdAndBack {A B} :
   forall (c : causal A B), causal_eq c (transdToCausal (causalToTransd c)).
@@ -452,7 +481,7 @@ Proof.
     auto.
 Qed.
 
-Theorem transdToCausalAndBack_aux {A B} : forall (t : transd A B) n (l : vec A n),
+Lemma transdToCausalAndBack_aux {A B} : forall (t : transd A B) n (l : vec A n),
   transd_eq
   (fst (stepN t l))
   (causalToTransdAux (transdToCausal t) l).
@@ -465,15 +494,19 @@ Proof.
   * cbn. rewrite causalApplySnoc_correct. unfold transdToCausal. cbn.
     unfold execN.
     cbn.
-    destruct (stepN t l).
-    cbn.
-    destruct (step t0 x).
-    cbn.
+    destruct (stepN t l); cbn.
+    destruct (step t0 x); cbn.
     reflexivity.
   * cbn.
     assert (snd (step (fst (stepN t l)) x) = fst (stepN t (Snoc _ l x))).
-    + cbn. destruct (stepN t l). cbn. destruct (step t0 x). cbn. reflexivity.
-  + rewrite H. apply coIH.
+    + cbn.
+      destruct (stepN t l).
+      cbn.
+      destruct (step t0 x).
+      cbn.
+      reflexivity.
+  + rewrite H.
+    apply coIH.
 Qed.
 
 Theorem transdToCausalAndBack {A B} :
@@ -484,7 +517,9 @@ Proof.
   assert (transd_eq
   (fst (stepN t (Empty _)))
   (causalToTransdAux (transdToCausal t) (Empty _))) by (apply transdToCausalAndBack_aux).
-  cbn in H. unfold causalToTransd. exact H.
+  cbn in H.
+  unfold causalToTransd.
+  exact H.
 Qed.
 
 
