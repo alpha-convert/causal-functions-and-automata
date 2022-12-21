@@ -88,8 +88,6 @@ Definition truncate {A} {n : nat} (l : vec A (S n)) : vec A n :=
   end.
 
 
-
-
 (*|
 Truncation is particularly interesting because it lets us reframe streams in terms of their prefixes.
 A stream can be thought of as a family of vectors `vs : forall n, vec n`, one of each length,
@@ -373,7 +371,6 @@ and transducers define the same set of stream functions, it remains to show the 
  2. Equivalent causal functions and equivalent trandsucers are interpreted as equivalent stream functions: i.e. the functions
     `interpCausal` and `interpTransd` are congruences.
 
-We define these equivalence relations and theorems below – I have yet to prove them.
 |*)
 
 Definition head {A} (s : stream A) : A :=
@@ -386,7 +383,6 @@ Definition tail {A} (s : stream A) : stream A :=
   | SCons _ _ s' => s'
   end.
 
-
 CoInductive stream_eq {A} : stream A -> stream A -> Prop :=
 | Eq_SCons : forall s s', head s = head s' -> stream_eq (tail s) (tail s') -> stream_eq s s'.
 
@@ -396,22 +392,103 @@ Definition causal_eq {A B} (c : causal A B) (c' : causal A B) :=
 CoInductive transd_eq {A B} : transd A B -> transd A B -> Prop :=
 | Eq_T : forall t t', (forall (x : A), (fst (step t x)) = (fst (step t' x)) /\ transd_eq (snd (step t x)) (snd (step t' x))) -> transd_eq t t'.
 
-Theorem vec_eta_0 {A} : forall (l : vec A 0), l = Empty A.
+Definition last {A} {n : nat} (l : vec A (S n)) : A := 
+  match l in vec _ (S n) return A with
+  | Snoc _ _ x => x
+  end.
+
+Lemma vec_eta_0 {A} : forall (l : vec A 0), l = Empty A.
 Proof.
-  dependent induction l. reflexivity.
+  dependent destruction l. reflexivity.
+Qed.
+
+Lemma vec_eta_S {A} : forall n (l : vec A (S n)), l = Snoc _ (truncate l) (last l).
+Proof.
+  dependent destruction l. eauto.
+Qed.
+
+Lemma causalApplySnoc_correct {A B} :
+  forall (c : causal A B) n (l : vec A n) (x : A),
+    (causalApplySnoc c l x) = last (f _ _ c _ (Snoc _ l x)).
+Proof.
+  intro c.
+  dependent induction l; intro x.
+  - unfold causalApplySnoc. rewrite (vec_eta_S 0 (f _ _ c 1 (Snoc _ (Empty _) x))). cbn. reflexivity.
+  - unfold causalApplySnoc. rewrite (vec_eta_S (S n) (f A B c (S (S n)) (Snoc A (Snoc A l a) x))). cbn. reflexivity.
+Qed.
+
+Lemma causalToTransdAux_step_correct {A B} : forall (c : causal A B) n (l : vec A n) x,
+  step (causalToTransdAux c l) x = (last (f _ _ c _ (Snoc _ l x)), causalToTransdAux c (Snoc A l x)).
+Proof.
+  intros.
+  cbn.
+  rewrite causalApplySnoc_correct.
+  reflexivity.
+Qed.
+
+Lemma causalToTransd_stepN_correct {A B} : forall c n l, stepN (causalToTransd c) l = (causalToTransdAux c l, f A B c n l).
+Proof.
+  intros.
+  unfold execN.
+  dependent induction l.
+  - cbn. unfold causalToTransd. rewrite (vec_eta_0 (f A B c 0 _)). reflexivity.
+  - cbn. rewrite IHl. rewrite causalToTransdAux_step_correct.
+    rewrite (vec_eta_S n (f A B c (S n) (Snoc A l a))).
+    cbn.
+    rewrite <- (caused _ _ c n (Snoc _ l a)). reflexivity.
 Qed.
 
 Theorem causalToTransdAndBack {A B} :
   forall (c : causal A B), causal_eq c (transdToCausal (causalToTransd c)).
 Proof.
-Admitted.
+  unfold causal_eq.
+  intro c.
+  dependent induction l.
+  - cbn. rewrite (vec_eta_0 (f A B c 0 (Empty A))). reflexivity.
+  - unfold transdToCausal.
+    cbn.
+    unfold execN.
+    rewrite causalToTransd_stepN_correct. 
+    auto.
+Qed.
+
+Theorem transdToCausalAndBack_aux {A B} : forall (t : transd A B) n (l : vec A n),
+  transd_eq
+  (fst (stepN t l))
+  (causalToTransdAux (transdToCausal t) l).
+Proof.
+  cofix coIH.
+  intros.
+  apply Eq_T.
+  intro x.
+  split.
+  * cbn. rewrite causalApplySnoc_correct. unfold transdToCausal. cbn.
+    unfold execN.
+    cbn.
+    destruct (stepN t l).
+    cbn.
+    destruct (step t0 x).
+    cbn.
+    reflexivity.
+  * cbn.
+    assert (snd (step (fst (stepN t l)) x) = fst (stepN t (Snoc _ l x))).
+    + cbn. destruct (stepN t l). cbn. destruct (step t0 x). cbn. reflexivity.
+  + rewrite H. apply coIH.
+Qed.
 
 Theorem transdToCausalAndBack {A B} :
   forall (t : transd A B), transd_eq t (causalToTransd (transdToCausal t)).
 Proof.
-Admitted.
+  cofix coIH.
+  intro t.
+  assert (transd_eq
+  (fst (stepN t (Empty _)))
+  (causalToTransdAux (transdToCausal t) (Empty _))) by (apply transdToCausalAndBack_aux).
+  cbn in H. unfold causalToTransd. exact H.
+Qed.
 
-Theorem interpCausalAux_cong {A B} :
+
+Lemma interpCausalAux_cong {A B} :
   forall (c c' : causal A B), causal_eq c c' -> forall s, forall n (l : vec A n), stream_eq (interpCausalAux c l s) (interpCausalAux c' l s).
 Proof.
   intros c c' eqpf; simpl.
